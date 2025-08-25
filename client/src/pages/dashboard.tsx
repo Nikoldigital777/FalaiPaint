@@ -119,6 +119,17 @@ export default function Dashboard() {
     refetchInterval: currentProject?.status === "generating" ? 2000 : false,
   });
 
+  // Fetch progress data with variants
+  const { data: progressData } = useQuery({
+    queryKey: ["/api/projects", currentProject?.id, "progress"],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/projects/${currentProject?.id}/progress`);
+      return response.json();
+    },
+    enabled: !!currentProject?.id,
+    refetchInterval: currentProject?.status === "generating" ? 2000 : false,
+  });
+
   // Export report mutation
   const exportReportMutation = useMutation({
     mutationFn: async (projectId: string) => {
@@ -535,9 +546,9 @@ export default function Dashboard() {
             )}
             
             {/* Generated Results */}
-            {projectData && 'variants' in projectData && Array.isArray(projectData.variants) && (
+            {progressData && progressData.variants && Array.isArray(progressData.variants) && (
               <VariantGrid 
-                variants={projectData.variants}
+                variants={progressData.variants}
                 onDownload={() => toast({ title: "Image downloaded", description: "Variant saved successfully" })}
                 onDownloadAll={() => toast({ title: "All images downloaded", description: "All variants saved successfully" })}
               />
