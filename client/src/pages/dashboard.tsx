@@ -456,39 +456,35 @@ export default function Dashboard() {
                 <Settings className="mr-2" />
                 {createProjectMutation.isPending ? "Creating..." : "Create Project"}
               </Button>
-            ) : (currentProject.status === "created" || currentProject.status === "pose_aligned") && currentProject.status !== "generating" ? (
+            ) : currentProject.status === "created" ? (
               <div className="space-y-3">
-                {currentProject.status === "created" ? (
-                  <>
-                    <Button 
-                      onClick={handleAlignPose}
-                      disabled={alignPoseMutation.isPending || !formData.backgroundImageUrl || !formData.poseImageUrl}
-                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                      data-testid="button-align-pose"
-                    >
-                      <Brain className="mr-2" />
-                      {alignPoseMutation.isPending ? "Aligning..." : "Align Pose to Scene"}
-                    </Button>
-                    <p className="text-xs text-gray-500 text-center">
-                      Automatically adapts pose reference to scene geometry
-                    </p>
-                  </>
-                ) : (
-                  <>
-                    <Button 
-                      onClick={handleStartGeneration}
-                      disabled={generateMutation.isPending || !formData.backgroundImageUrl || !formData.maskImageUrl || !formData.poseImageUrl}
-                      className="w-full bg-gradient-to-r from-secondary to-emerald-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                      data-testid="button-start-generation"
-                    >
-                      <Cog className="mr-2" />
-                      {generateMutation.isPending ? "Starting..." : "Start Generation Pipeline"}
-                    </Button>
-                    <p className="text-xs text-gray-500 text-center">
-                      Generate {formData.variantCount} variants using fal.ai SDXL
-                    </p>
-                  </>
-                )}
+                <Button 
+                  onClick={handleAlignPose}
+                  disabled={alignPoseMutation.isPending || !formData.backgroundImageUrl || !formData.poseImageUrl}
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                  data-testid="button-align-pose"
+                >
+                  <Brain className="mr-2" />
+                  {alignPoseMutation.isPending ? "Aligning..." : "Align Pose to Scene"}
+                </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  Automatically adapts pose reference to scene geometry
+                </p>
+              </div>
+            ) : currentProject.status === "pose_aligned" ? (
+              <div className="space-y-3">
+                <Button 
+                  onClick={handleStartGeneration}
+                  disabled={generateMutation.isPending || !formData.backgroundImageUrl || !formData.maskImageUrl || !formData.poseImageUrl}
+                  className="w-full bg-gradient-to-r from-secondary to-emerald-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                  data-testid="button-start-generation"
+                >
+                  <Cog className="mr-2" />
+                  {generateMutation.isPending ? "Starting..." : "Start Generation Pipeline"}
+                </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  Generate {formData.variantCount} variants using fal.ai SDXL (~2 mins)
+                </p>
               </div>
             ) : currentProject.status === "generating" ? (
               <div className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg text-center">
@@ -539,7 +535,7 @@ export default function Dashboard() {
             )}
             
             {/* Generated Results */}
-            {projectData?.variants && (
+            {projectData && 'variants' in projectData && Array.isArray(projectData.variants) && (
               <VariantGrid 
                 variants={projectData.variants}
                 onDownload={() => toast({ title: "Image downloaded", description: "Variant saved successfully" })}
@@ -548,16 +544,16 @@ export default function Dashboard() {
             )}
             
             {/* Quality Assessment */}
-            {projectData?.qualityMetrics && (
+            {projectData && 'qualityMetrics' in projectData && projectData.qualityMetrics && (
               <QualityMetrics 
-                ssimScore={projectData.qualityMetrics.averageSSIM}
-                poseAccuracy={projectData.qualityMetrics.averagePoseAccuracy}
-                colorDelta={projectData.qualityMetrics.averageColorDelta}
-                averageGenerationTime={projectData.qualityMetrics.averageGenerationTime}
-                totalApiCalls={projectData.qualityMetrics.totalApiCalls}
-                successRate={projectData.qualityMetrics.successRate}
-                totalCost={projectData.project?.totalCost}
-                recommendations={projectData.qualityMetrics.recommendations}
+                ssimScore={(projectData.qualityMetrics as any).averageSSIM}
+                poseAccuracy={(projectData.qualityMetrics as any).averagePoseAccuracy}
+                colorDelta={(projectData.qualityMetrics as any).averageColorDelta}
+                averageGenerationTime={(projectData.qualityMetrics as any).averageGenerationTime}
+                totalApiCalls={(projectData.qualityMetrics as any).totalApiCalls}
+                successRate={(projectData.qualityMetrics as any).successRate}
+                totalCost={currentProject?.totalCost}
+                recommendations={(projectData.qualityMetrics as any).recommendations}
               />
             )}
             
@@ -592,19 +588,19 @@ export default function Dashboard() {
                     <div className="grid md:grid-cols-4 gap-4 mb-4">
                       <div className="text-center">
                         <div className="text-lg font-bold text-primary" data-testid="text-total-variants">
-                          {projectData?.variants?.length || 0}
+                          {(projectData && 'variants' in projectData && Array.isArray(projectData.variants)) ? projectData.variants.length : 0}
                         </div>
                         <div className="text-xs text-gray-500">Total Variants</div>
                       </div>
                       <div className="text-center">
                         <div className="text-lg font-bold text-green-600" data-testid="text-success-rate-report">
-                          {Math.round((projectData?.qualityMetrics?.successRate || 0) * 100)}%
+                          {Math.round(((projectData && 'qualityMetrics' in projectData && projectData.qualityMetrics) ? (projectData.qualityMetrics as any).successRate || 0 : 0) * 100)}%
                         </div>
                         <div className="text-xs text-gray-500">Success Rate</div>
                       </div>
                       <div className="text-center">
                         <div className="text-lg font-bold text-blue-600" data-testid="text-avg-generation-report">
-                          {(projectData?.qualityMetrics?.averageGenerationTime || 0).toFixed(1)}s
+                          {((projectData && 'qualityMetrics' in projectData && projectData.qualityMetrics) ? (projectData.qualityMetrics as any).averageGenerationTime || 0 : 0).toFixed(1)}s
                         </div>
                         <div className="text-xs text-gray-500">Avg Generation</div>
                       </div>
@@ -617,7 +613,7 @@ export default function Dashboard() {
                     </div>
                     
                     <div className="text-xs text-gray-600">
-                      <strong>Summary:</strong> Successfully generated {projectData?.variants?.filter((v: any) => v.status === "completed").length || 0} high-quality lifestyle photography variants using SDXL Inpainting + ControlNet pipeline. All variants exceed quality thresholds with excellent pose alignment and color matching. Ready for client review and commercial use.
+                      <strong>Summary:</strong> Successfully generated {(projectData && 'variants' in projectData && Array.isArray(projectData.variants)) ? projectData.variants.filter((v: any) => v.status === "completed").length : 0} high-quality lifestyle photography variants using SDXL Inpainting + ControlNet pipeline. All variants exceed quality thresholds with excellent pose alignment and color matching. Ready for client review and commercial use.
                     </div>
                   </div>
                 </CardContent>
