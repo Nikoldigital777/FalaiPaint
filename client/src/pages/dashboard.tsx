@@ -35,6 +35,7 @@ interface Project {
 
 const progressSteps = [
   { id: "upload", label: "Upload Assets", icon: Upload, active: true, completed: true },
+  { id: "align", label: "Align Pose", icon: Brain, active: true, completed: false },
   { id: "generate", label: "Generate", icon: Cog, active: true, completed: false },
   { id: "review", label: "Review Results", icon: BarChart3, active: false, completed: false }
 ];
@@ -69,6 +70,24 @@ export default function Dashboard() {
     },
     onError: (error) => {
       toast({ title: "Failed to create project", description: error.message, variant: "destructive" });
+    }
+  });
+
+  // Pose alignment mutation
+  const alignPoseMutation = useMutation({
+    mutationFn: async ({ projectId, poseStyle }: { projectId: string; poseStyle: string }) => {
+      const response = await apiRequest("POST", `/api/projects/${projectId}/align-pose`, { poseStyle });
+      return response.json();
+    },
+    onSuccess: (result) => {
+      toast({ 
+        title: "Pose aligned successfully", 
+        description: `Validation score: ${(result.validationScore * 100).toFixed(1)}%` 
+      });
+      setCurrentProject(prev => prev ? { ...prev, status: "pose_aligned" } : null);
+    },
+    onError: (error) => {
+      toast({ title: "Failed to align pose", description: error.message, variant: "destructive" });
     }
   });
 
@@ -115,6 +134,20 @@ export default function Dashboard() {
 
   const handleCreateProject = () => {
     createProjectMutation.mutate(formData);
+  };
+
+  const handleAlignPose = () => {
+    if (!currentProject) return;
+    
+    if (!formData.backgroundImageUrl || !formData.poseImageUrl) {
+      toast({ title: "Missing files", description: "Please upload background and pose reference images", variant: "destructive" });
+      return;
+    }
+
+    alignPoseMutation.mutate({ 
+      projectId: currentProject.id, 
+      poseStyle: "sitting" // Default pose style, could be made configurable
+    });
   };
 
   const handleStartGeneration = () => {
@@ -172,8 +205,13 @@ export default function Dashboard() {
             <ol className="flex items-center justify-between">
               {progressSteps.map((step, index) => {
                 const Icon = step.icon;
-                const isActive = currentProject?.status === "generating" && step.id === "generate";
-                const isCompleted = currentProject?.status === "completed" && step.id !== "review";
+                const isActive = 
+                  (currentProject?.status === "generating" && step.id === "generate") ||
+                  (alignPoseMutation.isPending && step.id === "align");
+                const isCompleted = 
+                  (currentProject?.status === "completed" && step.id !== "review") ||
+                  (currentProject?.status === "pose_aligned" && step.id === "align") ||
+                  (step.id === "upload" && currentProject?.backgroundImageUrl && currentProject?.poseImageUrl);
                 
                 return (
                   <li key={step.id} className="relative flex items-center">
@@ -202,8 +240,11 @@ export default function Dashboard() {
                     
                     {index < progressSteps.length - 1 && (
                       <div className="ml-4 w-24 h-0.5 bg-gray-200">
-                        <div className={`h-full ${
-                          index === 0 ? "bg-secondary w-full" : "bg-gray-200 w-0"
+                        <div className={`h-full transition-all duration-500 ${
+                          index === 0 && currentProject?.backgroundImageUrl && currentProject?.poseImageUrl ? "bg-secondary w-full" :
+                          index === 1 && currentProject?.status === "pose_aligned" ? "bg-secondary w-full" :
+                          index === 2 && currentProject?.status === "generating" ? "bg-secondary w-full" :
+                          "bg-gray-200 w-0"
                         }`}></div>
                       </div>
                     )}
@@ -385,7 +426,7 @@ export default function Dashboard() {
               </CardContent>
             </Card>
             
-            {/* Generate Button */}
+            {/* Action Buttons */}
             {!currentProject ? (
               <Button 
                 onClick={handleCreateProject}
@@ -396,6 +437,21 @@ export default function Dashboard() {
                 <Settings className="mr-2" />
                 {createProjectMutation.isPending ? "Creating..." : "Create Project"}
               </Button>
+            ) : currentProject.status === "created" ? (
+              <div className="space-y-3">
+                <Button 
+                  onClick={handleAlignPose}
+                  disabled={alignPoseMutation.isPending || !formData.backgroundImageUrl || !formData.poseImageUrl}
+                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                  data-testid="button-align-pose"
+                >
+                  <Brain className="mr-2" />
+                  {alignPoseMutation.isPending ? "Aligning..." : "Align Pose to Scene"}
+                </Button>
+                <p className="text-xs text-gray-500 text-center">
+                  Automatically adapts pose reference to scene geometry
+                </p>
+              </div>
             ) : (
               <Button 
                 onClick={handleStartGeneration}

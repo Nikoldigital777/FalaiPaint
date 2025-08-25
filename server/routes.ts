@@ -3,6 +3,7 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertProjectSchema, insertVariantSchema } from "@shared/schema";
+import { poseAlignmentSystem } from "./pose-alignment";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -121,6 +122,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to upload file" });
+    }
+  });
+
+  // Pose alignment endpoint
+  app.post("/api/projects/:id/align-pose", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      if (!project.backgroundImageUrl || !project.poseImageUrl) {
+        return res.status(400).json({ error: "Missing background or pose reference image" });
+      }
+
+      const { poseStyle = "sitting" } = req.body;
+
+      // Convert URLs to file paths
+      const backgroundPath = `.${project.backgroundImageUrl}`;
+      const posePath = `.${project.poseImageUrl}`;
+
+      // Process pose alignment
+      const alignmentResult = await poseAlignmentSystem.processImageForAlignment(
+        backgroundPath,
+        posePath,
+        project.sceneType,
+        poseStyle
+      );
+
+      res.json({
+        success: true,
+        alignment: alignmentResult.poseAlignment,
+        processingTime: alignmentResult.processingTime,
+        validationScore: alignmentResult.poseAlignment.validationScore
+      });
+    } catch (error) {
+      res.status(500).json({ 
+        error: "Failed to align pose", 
+        details: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 
