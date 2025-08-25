@@ -229,6 +229,10 @@ function VariantCard({ variant, onDownload }: { variant: Variant; onDownload?: (
 }
 
 export function VariantGrid({ variants, onDownload, onDownloadAll }: VariantGridProps) {
+  // Debug logging
+  console.log("🎯 VariantGrid received variants:", variants);
+  console.log("🎯 Variants with images:", variants.filter(v => v.imageUrl));
+  
   const completedVariants = variants.filter(v => v.status === "completed");
   
   const downloadAllVariants = async () => {
