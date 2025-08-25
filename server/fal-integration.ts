@@ -100,6 +100,16 @@ export class FalAIService {
 
       // Call fal.ai SDXL ControlNet Union Inpainting endpoint
       console.log("🚀 Calling fal.ai SDXL ControlNet Union Inpainting endpoint...");
+      console.log("📋 Request payload:", JSON.stringify({
+        prompt: prompt.substring(0, 100) + "...",
+        image_url: backgroundUrl.substring(0, 50) + "...",
+        mask_url: maskUrl.substring(0, 50) + "...",
+        openpose_image_url: poseUrl.substring(0, 50) + "...",
+        num_inference_steps: 35,
+        guidance_scale: request.guidanceScale,
+        seed: request.seed
+      }, null, 2));
+      
       const result = await fal.subscribe("fal-ai/sdxl-controlnet-union/inpainting", {
         input: {
           // Core prompt for lifestyle photography
@@ -171,6 +181,7 @@ export class FalAIService {
       };
 
     } catch (error) {
+      console.error("❌ Generation error details:", error);
       throw new Error(`fal.ai generation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
