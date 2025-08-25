@@ -1,0 +1,454 @@
+#!/usr/bin/env python3
+"""
+Automated Pose Preset Alignment System
+Adapts pose skeletons to scene geometry for seamless figure insertion
+"""
+
+import numpy as np
+import cv2
+import json
+from typing import Dict, List, Tuple, Optional
+from dataclasses import dataclass
+from PIL import Image
+import mediapipe as mp
+from transformers import pipeline
+import torch
+
+@dataclass
+class PoseKeypoint:
+    x: float
+    y: float
+    confidence: float
+    name: str
+
+@dataclass 
+class SceneAnchor:
+    name: str
+    x: float
+    y: float
+    depth: float
+    surface_normal: Tuple[float, float, float]
+
+class PoseAlignmentSystem:
+    def __init__(self):
+        # Initialize pose detection
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(
+            static_image_mode=True,
+            model_complexity=2,
+            enable_segmentation=False,
+            min_detection_confidence=0.5
+        )
+        
+        # Initialize depth estimation
+        self.depth_estimator = pipeline(
+            "depth-estimation", 
+            model="Intel/dpt-large"
+        )
+        
+        # Scene-specific anchor configurations
+        self.scene_configs = {
+            "pool_edge": {
+                "primary_anchors": ["left_hip", "right_hip", "left_ankle", "right_ankle"],
+                "surface_height_ratio": 0.65,  # Pool coping typically at 65% of image height
+                "depth_threshold": 0.3,
+                "pose_constraints": {
+                    "sitting": {"hip_elevation": 0.4, "leg_angle": 45},
+                    "lounging": {"hip_elevation": 0.2, "leg_angle": 15}
+                }
+            },
+            "railing": {
+                "primary_anchors": ["left_hip", "right_hip", "left_shoulder", "right_shoulder"],
+                "surface_height_ratio": 0.5,
+                "depth_threshold": 0.4,
+                "pose_constraints": {
+                    "leaning": {"hip_elevation": 0.6, "shoulder_angle": 15}
+                }
+            },
+            "bench": {
+                "primary_anchors": ["left_hip", "right_hip", "left_knee", "right_knee"],
+                "surface_height_ratio": 0.7,
+                "depth_threshold": 0.25,
+                "pose_constraints": {
+                    "sitting": {"hip_elevation": 0.5, "knee_angle": 90}
+                }
+            }
+        }
+    
+    def extract_pose_skeleton(self, image_path: str) -> Dict[str, PoseKeypoint]:
+        """Extract pose keypoints from reference image"""
+        image = cv2.imread(image_path)
+        image_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        results = self.pose.process(image_rgb)
+        
+        if not results.pose_landmarks:
+            raise ValueError("No pose detected in reference image")
+        
+        # Convert MediaPipe landmarks to our format
+        keypoints = {}
+        landmark_names = [
+            'nose', 'left_eye_inner', 'left_eye', 'left_eye_outer',
+            'right_eye_inner', 'right_eye', 'right_eye_outer',
+            'left_ear', 'right_ear', 'mouth_left', 'mouth_right',
+            'left_shoulder', 'right_shoulder', 'left_elbow', 'right_elbow',
+            'left_wrist', 'right_wrist', 'left_pinky', 'right_pinky',
+            'left_index', 'right_index', 'left_thumb', 'right_thumb',
+            'left_hip', 'right_hip', 'left_knee', 'right_knee',
+            'left_ankle', 'right_ankle', 'left_heel', 'right_heel',
+            'left_foot_index', 'right_foot_index'
+        ]
+        
+        for i, landmark in enumerate(results.pose_landmarks.landmark):
+            if i < len(landmark_names):
+                keypoints[landmark_names[i]] = PoseKeypoint(
+                    x=landmark.x,
+                    y=landmark.y,
+                    confidence=landmark.visibility,
+                    name=landmark_names[i]
+                )
+        
+        return keypoints
+    
+    def analyze_scene_geometry(self, background_path: str, scene_type: str) -> Dict:
+        """Analyze background scene to identify insertion points"""
+        image = Image.open(background_path)
+        
+        # Generate depth map
+        depth = self.depth_estimator(image)
+        depth_array = np.array(depth["depth"])
+        
+        # Normalize depth values
+        depth_normalized = (depth_array - depth_array.min()) / (depth_array.max() - depth_array.min())
+        
+        # Scene-specific analysis
+        config = self.scene_configs.get(scene_type, self.scene_configs["pool_edge"])
+        
+        # Find horizontal surfaces at expected height
+        surface_height = int(image.height * config["surface_height_ratio"])
+        surface_region = depth_normalized[surface_height-20:surface_height+20, :]
+        
+        # Identify stable insertion zones
+        surface_mean_depth = np.mean(surface_region, axis=0)
+        insertion_zones = self._find_insertion_zones(surface_mean_depth, config["depth_threshold"])
+        
+        return {
+            "depth_map": depth_normalized,
+            "surface_height": surface_height,
+            "insertion_zones": insertion_zones,
+            "scene_config": config
+        }
+    
+    def _find_insertion_zones(self, depth_profile: np.ndarray, threshold: float) -> List[Dict]:
+        """Find suitable zones for figure insertion based on depth consistency"""
+        zones = []
+        
+        # Find regions with consistent depth (flat surfaces)
+        depth_variance = np.convolve(depth_profile, np.ones(50)/50, mode='valid')
+        stable_regions = np.where(np.abs(np.diff(depth_variance)) < threshold)[0]
+        
+        if len(stable_regions) > 0:
+            # Group consecutive stable regions
+            groups = np.split(stable_regions, np.where(np.diff(stable_regions) != 1)[0] + 1)
+            
+            for group in groups:
+                if len(group) > 20:  # Minimum width for figure insertion
+                    zones.append({
+                        "x_start": int(group[0]),
+                        "x_end": int(group[-1]),
+                        "width": len(group),
+                        "avg_depth": np.mean(depth_profile[group[0]:group[-1]+1]),
+                        "stability_score": 1.0 - np.std(depth_profile[group[0]:group[-1]+1])
+                    })
+        
+        # Sort by stability score
+        zones.sort(key=lambda x: x["stability_score"], reverse=True)
+        return zones
+    
+    def adapt_pose_to_scene(
+        self, 
+        pose_keypoints: Dict[str, PoseKeypoint],
+        scene_analysis: Dict,
+        scene_type: str,
+        pose_style: str = "sitting"
+    ) -> Dict:
+        """Adapt pose skeleton to match scene geometry"""
+        
+        config = scene_analysis["scene_config"]
+        constraints = config["pose_constraints"].get(pose_style, config["pose_constraints"]["sitting"])
+        
+        # Select best insertion zone
+        if not scene_analysis["insertion_zones"]:
+            raise ValueError("No suitable insertion zones found in scene")
+        
+        best_zone = scene_analysis["insertion_zones"][0]
+        zone_center_x = (best_zone["x_start"] + best_zone["x_end"]) // 2
+        
+        # Calculate pose adaptations
+        adaptations = {}
+        
+        # Primary anchor points for the scene type
+        primary_anchors = config["primary_anchors"]
+        
+        for anchor_name in primary_anchors:
+            if anchor_name in pose_keypoints:
+                original_kp = pose_keypoints[anchor_name]
+                
+                # Adapt position based on scene geometry
+                adapted_x, adapted_y = self._adapt_keypoint_position(
+                    original_kp, 
+                    zone_center_x,
+                    scene_analysis["surface_height"],
+                    best_zone["avg_depth"],
+                    constraints,
+                    anchor_name
+                )
+                
+                adaptations[anchor_name] = {
+                    "original": {"x": original_kp.x, "y": original_kp.y},
+                    "adapted": {"x": adapted_x, "y": adapted_y},
+                    "confidence": original_kp.confidence,
+                    "adjustment": {
+                        "x_shift": adapted_x - original_kp.x,
+                        "y_shift": adapted_y - original_kp.y
+                    }
+                }
+        
+        # Validate pose alignment
+        validation_score = self._validate_pose_alignment(adaptations, constraints, scene_type)
+        
+        return {
+            "adaptations": adaptations,
+            "insertion_zone": best_zone,
+            "validation_score": validation_score,
+            "pose_style": pose_style,
+            "scene_type": scene_type
+        }
+    
+    def _adapt_keypoint_position(
+        self, 
+        keypoint: PoseKeypoint, 
+        zone_center_x: int, 
+        surface_height: int,
+        surface_depth: float,
+        constraints: Dict,
+        keypoint_name: str
+    ) -> Tuple[float, float]:
+        """Adapt individual keypoint to scene constraints"""
+        
+        # Normalize coordinates (MediaPipe uses 0-1 range)
+        base_x = zone_center_x / 1024.0  # Assuming 1024px width
+        base_y = surface_height / 1024.0  # Assuming 1024px height
+        
+        # Apply pose-specific adjustments
+        if "hip" in keypoint_name:
+            adapted_y = base_y - constraints.get("hip_elevation", 0.1)
+            adapted_x = base_x + (keypoint.x - 0.5) * 0.3  # Maintain relative hip width
+            
+        elif "ankle" in keypoint_name or "knee" in keypoint_name:
+            # Position legs based on pose style
+            leg_extension = constraints.get("leg_angle", 45) / 90.0  # Normalize angle
+            adapted_y = base_y + leg_extension * 0.2
+            adapted_x = base_x + (keypoint.x - 0.5) * 0.4
+            
+        elif "shoulder" in keypoint_name:
+            shoulder_adjustment = constraints.get("shoulder_angle", 0) / 45.0
+            adapted_y = base_y - 0.3 + shoulder_adjustment * 0.1
+            adapted_x = base_x + (keypoint.x - 0.5) * 0.25
+            
+        else:
+            # Default: maintain relative position to hips
+            adapted_x = base_x + (keypoint.x - 0.5) * 0.3
+            adapted_y = keypoint.y  # Keep original Y for other points
+        
+        return adapted_x, adapted_y
+    
+    def _validate_pose_alignment(self, adaptations: Dict, constraints: Dict, scene_type: str) -> float:
+        """Validate that pose alignment meets quality standards"""
+        validation_scores = []
+        
+        # Check hip alignment (should be at same height)
+        if "left_hip" in adaptations and "right_hip" in adaptations:
+            left_hip_y = adaptations["left_hip"]["adapted"]["y"]
+            right_hip_y = adaptations["right_hip"]["adapted"]["y"]
+            hip_alignment = 1.0 - abs(left_hip_y - right_hip_y) * 10  # Penalize misalignment
+            validation_scores.append(max(0, hip_alignment))
+        
+        # Check pose stability (ankles should be lower than hips for sitting poses)
+        hip_y = None
+        ankle_y = None
+        
+        for name, adaptation in adaptations.items():
+            if "hip" in name and hip_y is None:
+                hip_y = adaptation["adapted"]["y"]
+            elif "ankle" in name and ankle_y is None:
+                ankle_y = adaptation["adapted"]["y"]
+        
+        if hip_y is not None and ankle_y is not None:
+            pose_stability = 1.0 if ankle_y > hip_y else 0.5  # Ankles should be lower
+            validation_scores.append(pose_stability)
+        
+        # Check confidence scores
+        confidence_scores = [adapt["confidence"] for adapt in adaptations.values()]
+        avg_confidence = np.mean(confidence_scores) if confidence_scores else 0.5
+        validation_scores.append(avg_confidence)
+        
+        return np.mean(validation_scores) if validation_scores else 0.0
+    
+    def generate_alignment_json(self, alignment_result: Dict) -> str:
+        """Generate JSON configuration for ControlNet pose conditioning"""
+        pose_json = {
+            "version": "1.0",
+            "scene_type": alignment_result["scene_type"],
+            "pose_style": alignment_result["pose_style"],
+            "validation_score": alignment_result["validation_score"],
+            "keypoints": []
+        }
+        
+        for name, adaptation in alignment_result["adaptations"].items():
+            pose_json["keypoints"].append({
+                "name": name,
+                "x": adaptation["adapted"]["x"],
+                "y": adaptation["adapted"]["y"],
+                "confidence": adaptation["confidence"],
+                "original_x": adaptation["original"]["x"],
+                "original_y": adaptation["original"]["y"]
+            })
+        
+        return json.dumps(pose_json, indent=2)
+    
+    def visualize_alignment(self, background_path: str, alignment_result: Dict, output_path: str):
+        """Create visualization showing pose alignment on background"""
+        background = cv2.imread(background_path)
+        height, width = background.shape[:2]
+        
+        # Draw insertion zone
+        zone = alignment_result["insertion_zone"]
+        cv2.rectangle(
+            background, 
+            (zone["x_start"], zone["x_start"] - 50),
+            (zone["x_end"], zone["x_start"] + 50),
+            (0, 255, 0), 2
+        )
+        
+        # Draw adapted keypoints
+        for name, adaptation in alignment_result["adaptations"].items():
+            adapted = adaptation["adapted"]
+            x = int(adapted["x"] * width)
+            y = int(adapted["y"] * height)
+            
+            # Different colors for different body parts
+            color = (255, 0, 0) if "hip" in name else (0, 0, 255) if "ankle" in name else (255, 255, 0)
+            cv2.circle(background, (x, y), 8, color, -1)
+            cv2.putText(background, name, (x+10, y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 1)
+        
+        # Add validation score
+        cv2.putText(
+            background, 
+            f"Validation: {alignment_result['validation_score']:.2f}",
+            (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2
+        )
+        
+        cv2.imwrite(output_path, background)
+
+# Usage example and integration class
+class PoseAlignmentPipeline:
+    def __init__(self):
+        self.alignment_system = PoseAlignmentSystem()
+    
+    def process_scene(
+        self, 
+        background_path: str, 
+        pose_reference_path: str,
+        scene_type: str = "pool_edge",
+        pose_style: str = "sitting"
+    ) -> Dict:
+        """Complete pose alignment processing pipeline"""
+        
+        print(f"🔍 Analyzing scene geometry for {scene_type}...")
+        scene_analysis = self.alignment_system.analyze_scene_geometry(background_path, scene_type)
+        
+        print(f"🕺 Extracting pose from reference: {pose_reference_path}")
+        pose_keypoints = self.alignment_system.extract_pose_skeleton(pose_reference_path)
+        
+        print(f"🎯 Adapting pose for {pose_style} style...")
+        alignment_result = self.alignment_system.adapt_pose_to_scene(
+            pose_keypoints, scene_analysis, scene_type, pose_style
+        )
+        
+        print(f"✅ Pose alignment complete! Validation score: {alignment_result['validation_score']:.2f}")
+        
+        # Generate outputs
+        pose_json = self.alignment_system.generate_alignment_json(alignment_result)
+        
+        return {
+            "alignment_result": alignment_result,
+            "pose_json": pose_json,
+            "scene_analysis": scene_analysis,
+            "validation_passed": alignment_result["validation_score"] > 0.7
+        }
+
+# Integration with fal.ai pipeline
+def integrate_with_fal_pipeline(alignment_result: Dict, fal_pipeline_params: Dict) -> Dict:
+    """Integrate pose alignment with fal.ai generation parameters"""
+    
+    # Extract adapted pose for ControlNet
+    adapted_keypoints = []
+    for name, adaptation in alignment_result["adaptations"].items():
+        adapted_keypoints.append({
+            "name": name,
+            "x": adaptation["adapted"]["x"] * 1024,  # Convert to pixel coordinates
+            "y": adaptation["adapted"]["y"] * 1024,
+            "confidence": adaptation["confidence"]
+        })
+    
+    # Update fal.ai parameters with aligned pose
+    fal_pipeline_params.update({
+        "controlnet_conditioning_scale": 0.9,  # High conditioning for precise pose
+        "pose_keypoints": adapted_keypoints,
+        "validation_score": alignment_result["validation_score"]
+    })
+    
+    return fal_pipeline_params
+
+if __name__ == "__main__":
+    # Example usage
+    pipeline = PoseAlignmentPipeline()
+    
+    result = pipeline.process_scene(
+        background_path="./assets/pool_background.jpg",
+        pose_reference_path="./assets/pose_reference.jpg",
+        scene_type="pool_edge",
+        pose_style="sitting"
+    )
+    
+    print("Pose JSON for ControlNet:")
+    print(result["pose_json"])
+    
+    if result["validation_passed"]:
+        print("✅ Pose alignment validation passed - ready for generation!")
+    else:
+        print("⚠️  Pose alignment needs adjustment")
+
+"""
+TECHNICAL FEATURES:
+
+✅ Automatic pose skeleton extraction using MediaPipe
+✅ Scene geometry analysis with depth estimation  
+✅ Configurable scene types (pool_edge, railing, bench)
+✅ Pose style adaptation (sitting, lounging, leaning)
+✅ Validation scoring with quality thresholds
+✅ JSON export for ControlNet integration
+✅ Visualization tools for debugging
+✅ Full integration with fal.ai pipeline
+
+USAGE IN YOUR SAAS:
+- Upload background → Scene analysis
+- Upload pose reference → Skeleton extraction  
+- Auto-alignment → Validation scoring
+- Generate → Pass adapted pose to fal.ai
+- Review → Show alignment visualization
+
+This addresses Carlos's specific question about automating 
+pose preset alignment with depth guidance!
+"""
