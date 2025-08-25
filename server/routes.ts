@@ -188,6 +188,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Start generation process (async)
+      console.log(`🚀 Starting generation for project ${project.id}`);
       generateVariants(project.id);
 
       res.json({ message: "Generation started", projectId: project.id });

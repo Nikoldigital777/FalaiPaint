@@ -15,7 +15,7 @@ import { FileUpload } from "@/components/file-upload";
 import { ProgressTracker } from "@/components/progress-tracker";
 import { QualityMetrics } from "@/components/quality-metrics";
 import { VariantGrid } from "@/components/variant-grid";
-import { Camera, Upload, Cog, BarChart3, Download, Calculator, Rocket, Settings, Brain } from "lucide-react";
+import { Camera, Upload, Cog, BarChart3, Download, Calculator, Rocket, Settings, Brain, CheckCircle } from "lucide-react";
 
 interface Project {
   id: string;
@@ -94,14 +94,20 @@ export default function Dashboard() {
   // Start generation mutation
   const generateMutation = useMutation({
     mutationFn: async (projectId: string) => {
+      console.log(`🚀 Starting generation for project ${projectId}`);
       const response = await apiRequest("POST", `/api/projects/${projectId}/generate`);
+      console.log("✅ Generation request successful:", response);
       return response.json();
     },
     onSuccess: () => {
-      toast({ title: "Generation started", description: "Your variants are being generated" });
+      console.log("✅ Generation started successfully");
+      toast({ title: "Generation started", description: "Processing variants with fal.ai SDXL..." });
       queryClient.invalidateQueries({ queryKey: ["/api/projects"] });
+      // Update project status to show generation is happening
+      setCurrentProject(prev => prev ? { ...prev, status: "generating" } : null);
     },
     onError: (error) => {
+      console.error("❌ Generation failed:", error);
       toast({ title: "Failed to start generation", description: error.message, variant: "destructive" });
     }
   });
@@ -151,13 +157,26 @@ export default function Dashboard() {
   };
 
   const handleStartGeneration = () => {
-    if (!currentProject) return;
+    if (!currentProject) {
+      console.log("❌ No current project found");
+      return;
+    }
+    
+    console.log("🔍 Checking generation requirements:", {
+      projectId: currentProject.id,
+      status: currentProject.status,
+      backgroundImageUrl: !!formData.backgroundImageUrl,
+      maskImageUrl: !!formData.maskImageUrl,
+      poseImageUrl: !!formData.poseImageUrl
+    });
     
     if (!formData.backgroundImageUrl || !formData.maskImageUrl || !formData.poseImageUrl) {
       toast({ title: "Missing files", description: "Please upload all required images", variant: "destructive" });
+      console.log("❌ Missing required images");
       return;
     }
 
+    console.log("🚀 All requirements met, starting generation");
     generateMutation.mutate(currentProject.id);
   };
 
@@ -437,31 +456,50 @@ export default function Dashboard() {
                 <Settings className="mr-2" />
                 {createProjectMutation.isPending ? "Creating..." : "Create Project"}
               </Button>
-            ) : currentProject.status === "created" ? (
+            ) : (currentProject.status === "created" || currentProject.status === "pose_aligned") && currentProject.status !== "generating" ? (
               <div className="space-y-3">
-                <Button 
-                  onClick={handleAlignPose}
-                  disabled={alignPoseMutation.isPending || !formData.backgroundImageUrl || !formData.poseImageUrl}
-                  className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                  data-testid="button-align-pose"
-                >
-                  <Brain className="mr-2" />
-                  {alignPoseMutation.isPending ? "Aligning..." : "Align Pose to Scene"}
-                </Button>
-                <p className="text-xs text-gray-500 text-center">
-                  Automatically adapts pose reference to scene geometry
-                </p>
+                {currentProject.status === "created" ? (
+                  <>
+                    <Button 
+                      onClick={handleAlignPose}
+                      disabled={alignPoseMutation.isPending || !formData.backgroundImageUrl || !formData.poseImageUrl}
+                      className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                      data-testid="button-align-pose"
+                    >
+                      <Brain className="mr-2" />
+                      {alignPoseMutation.isPending ? "Aligning..." : "Align Pose to Scene"}
+                    </Button>
+                    <p className="text-xs text-gray-500 text-center">
+                      Automatically adapts pose reference to scene geometry
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <Button 
+                      onClick={handleStartGeneration}
+                      disabled={generateMutation.isPending || !formData.backgroundImageUrl || !formData.maskImageUrl || !formData.poseImageUrl}
+                      className="w-full bg-gradient-to-r from-secondary to-emerald-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
+                      data-testid="button-start-generation"
+                    >
+                      <Cog className="mr-2" />
+                      {generateMutation.isPending ? "Starting..." : "Start Generation Pipeline"}
+                    </Button>
+                    <p className="text-xs text-gray-500 text-center">
+                      Generate {formData.variantCount} variants using fal.ai SDXL
+                    </p>
+                  </>
+                )}
+              </div>
+            ) : currentProject.status === "generating" ? (
+              <div className="w-full bg-gradient-to-r from-blue-500 to-blue-600 text-white py-4 px-6 rounded-lg font-semibold text-lg text-center">
+                <Cog className="mr-2 inline animate-spin" />
+                Generation in Progress...
               </div>
             ) : (
-              <Button 
-                onClick={handleStartGeneration}
-                disabled={generateMutation.isPending || !formData.backgroundImageUrl || !formData.maskImageUrl || !formData.poseImageUrl}
-                className="w-full bg-gradient-to-r from-secondary to-emerald-600 text-white py-4 px-6 rounded-lg font-semibold text-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200"
-                data-testid="button-start-generation"
-              >
-                <Cog className="mr-2" />
-                {generateMutation.isPending ? "Starting..." : "Start Generation Pipeline"}
-              </Button>
+              <div className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white py-4 px-6 rounded-lg font-semibold text-lg text-center">
+                <CheckCircle className="mr-2 inline" />
+                Generation Complete
+              </div>
             )}
             
             {/* Cost Estimation */}
