@@ -119,15 +119,11 @@ export default function Dashboard() {
     refetchInterval: currentProject?.status === "generating" ? 2000 : false,
   });
 
-  // Fetch progress data with variants
+  // Get progress data from the same query as ProgressTracker
   const { data: progressData } = useQuery({
     queryKey: ["/api/projects", currentProject?.id, "progress"],
-    queryFn: async () => {
-      const response = await apiRequest("GET", `/api/projects/${currentProject?.id}/progress`);
-      return response.json();
-    },
     enabled: !!currentProject?.id,
-    refetchInterval: currentProject?.status === "generating" ? 2000 : false,
+    refetchInterval: 2000,
   });
 
   // Export report mutation
