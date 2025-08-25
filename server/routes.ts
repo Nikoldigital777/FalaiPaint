@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { insertProjectSchema, insertVariantSchema } from "@shared/schema";
 import { poseAlignmentSystem } from "./pose-alignment";
+import { falAIService } from "./fal-integration";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -277,34 +278,76 @@ export async function registerRoutes(app: Express): Promise<Server> {
   return httpServer;
 }
 
-// Simulate generation process (replace with actual fal.ai integration)
+// Real fal.ai generation process
 async function generateVariants(projectId: string) {
+  const project = await storage.getProject(projectId);
   const variants = await storage.getVariantsByProject(projectId);
   
-  for (const variant of variants) {
-    try {
-      // Simulate generation time
-      const generationTime = 12 + Math.random() * 8; // 12-20 seconds
-      
-      // Update to generating
-      await storage.updateVariant(variant.id, { status: "generating" });
-      
-      await new Promise(resolve => setTimeout(resolve, generationTime * 1000));
-      
-      // Simulate successful generation
-      await storage.updateVariant(variant.id, {
-        status: "completed",
-        generationTime,
-        imageUrl: `https://images.unsplash.com/photo-1544005313-94ddf0286df2?ixlib=rb-4.0.3&w=400&h=400&fit=crop`,
-        ssimScore: 0.92 + Math.random() * 0.06, // 0.92-0.98
-        poseAccuracy: 0.94 + Math.random() * 0.05, // 0.94-0.99
-        colorDelta: 1.5 + Math.random() * 1.0 // 1.5-2.5
-      });
-      
-    } catch (error) {
+  if (!project) {
+    console.error(`Project ${projectId} not found`);
+    return;
+  }
+
+  try {
+    // Prepare generation request
+    const generationRequest = {
+      backgroundImageUrl: project.backgroundImageUrl || "",
+      maskImageUrl: project.maskImageUrl || "",
+      poseImageUrl: project.poseImageUrl || "",
+      prompt: "",
+      controlnetStrength: project.controlnetStrength || 0.85,
+      guidanceScale: project.guidanceScale || 7.5,
+      seed: 0, // Will be set per variant
+      sceneType: project.sceneType,
+      photographyStyle: project.photographyStyle
+    };
+
+    for (const variant of variants) {
+      try {
+        // Update to generating
+        await storage.updateVariant(variant.id, { status: "generating" });
+        
+        // Generate with fal.ai
+        const variantRequest = {
+          ...generationRequest,
+          seed: variant.seed
+        };
+
+        const result = await falAIService.generateImage(variantRequest);
+        
+        // Calculate quality metrics
+        const qualityMetrics = await falAIService.calculateQualityMetrics(
+          project.backgroundImageUrl || "",
+          result.imageUrl,
+          project.maskImageUrl || ""
+        );
+
+        // Update variant with results
+        await storage.updateVariant(variant.id, {
+          status: "completed",
+          generationTime: result.generationTime,
+          imageUrl: result.imageUrl,
+          falRequestId: result.falRequestId,
+          ssimScore: qualityMetrics.ssimScore,
+          poseAccuracy: qualityMetrics.poseAccuracy,
+          colorDelta: qualityMetrics.colorDelta
+        });
+        
+      } catch (error) {
+        console.error(`Variant ${variant.id} generation failed:`, error);
+        await storage.updateVariant(variant.id, {
+          status: "failed",
+          errorMessage: error instanceof Error ? error.message : "Generation failed"
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`Project ${projectId} generation failed:`, error);
+    // Mark all variants as failed
+    for (const variant of variants) {
       await storage.updateVariant(variant.id, {
         status: "failed",
-        errorMessage: "Generation failed"
+        errorMessage: "Project generation failed"
       });
     }
   }
