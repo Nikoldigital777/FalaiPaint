@@ -1,0 +1,428 @@
+#!/usr/bin/env python3
+"""
+fal.ai SDXL Inpainting + ControlNet + LoRA Pipeline - Python Implementation
+Complete pipeline for Carlos San Juan's lifestyle photography project
+"""
+
+import os
+import json
+import time
+import asyncio
+from pathlib import Path
+from typing import List, Dict, Optional, Any
+from dataclasses import dataclass
+
+import fal_client
+from PIL import Image
+import requests
+
+# Set your fal.ai API key
+os.environ["FAL_KEY"] = os.getenv("FAL_KEY", "your-api-key-here")
+
+@dataclass
+class GenerationResult:
+    variant: int
+    seed: int
+    image_url: str
+    generation_time: Optional[str]
+    request_id: str
+
+@dataclass
+class SceneFiles:
+    background_image: str
+    mask_image: str
+    pose_reference: str
+    custom_lora: Optional[str] = None
+
+class LifestylePhotographyPipeline:
+    def __init__(self):
+        self.endpoint = "fal-ai/sdxl-controlnet-union/inpainting"
+        self.base_prompt = "photorealistic lifestyle photography, natural lighting, professional quality, 85mm lens, f/2.8"
+        
+    async def generate_pool_edge_variants(self, input_files: SceneFiles) -> List[GenerationResult]:
+        """Generate 3 variants for the trial project (pool edge scene)"""
+        
+        # Upload files to fal.ai storage
+        uploaded_files = await self._upload_files(input_files)
+        
+        variants = []
+        seeds = [123456, 789012, 345678]  # For consistent reproduction
+        
+        for i in range(3):
+            print(f"Generating variant {i + 1}/3...")
+            
+            try:
+                # Prepare generation parameters
+                params = {
+                    # Core prompt for lifestyle photography
+                    "prompt": f"{self.base_prompt}, woman in elegant sundress seated at pool edge, relaxed natural posture, soft golden hour lighting, detailed skin texture, serene pool background, luxury resort atmosphere, high-end fashion photography style",
+                    
+                    # Negative prompt to avoid common issues
+                    "negative_prompt": "cartoon, illustration, anime, cgi, deformed hands, extra fingers, blurry, low resolution, artifacts, harsh shadows, over-saturated, bad anatomy, distorted proportions, multiple people, crowd",
+                    
+                    # Image inputs
+                    "image_url": uploaded_files["background"],
+                    "mask_url": uploaded_files["mask"],
+                    
+                    # ControlNet configurations
+                    "openpose_image_url": uploaded_files["pose"],
+                    "openpose_preprocess": True,  # Let fal.ai extract pose
+                    "depth_image_url": uploaded_files["background"],  # Use background for depth
+                    "depth_preprocess": True,  # Auto-generate depth map
+                    
+                    # ControlNet conditioning scales
+                    "controlnet_conditioning_scale": 0.85,  # Strong pose guidance
+                    
+                    # Generation parameters optimized for quality
+                    "num_inference_steps": 35,
+                    "guidance_scale": 7.5,
+                    "strength": 0.95,
+                    
+                    # Output settings
+                    "num_images": 1,
+                    "seed": seeds[i],
+                    "image_size": "square_hd",  # 1024x1024 optimal for SDXL
+                    
+                    # Quality settings
+                    "enable_safety_checker": True,
+                    "safety_checker_version": "v1"
+                }
+                
+                # Add LoRA if provided
+                if input_files.custom_lora:
+                    params["loras"] = [{
+                        "path": input_files.custom_lora,
+                        "scale": 0.75
+                    }]
+                
+                # Submit generation request
+                result = fal_client.subscribe(
+                    self.endpoint,
+                    arguments=params,
+                    with_logs=True
+                )
+                
+                variants.append(GenerationResult(
+                    variant=i + 1,
+                    seed=seeds[i],
+                    image_url=result["images"][0]["url"],
+                    generation_time=result.get("timings", {}).get("inference", "unknown"),
+                    request_id=result.get("request_id", "unknown")
+                ))
+                
+                print(f"✅ Variant {i + 1} completed: {result['images'][0]['url']}")
+                
+            except Exception as error:
+                print(f"❌ Error generating variant {i + 1}: {error}")
+                raise error
+            
+            # Small delay between requests
+            await asyncio.sleep(2)
+        
+        return variants
+    
+    async def _upload_files(self, files: SceneFiles) -> Dict[str, str]:
+        """Upload files to fal.ai storage"""
+        uploaded = {}
+        
+        file_mapping = {
+            "background": files.background_image,
+            "mask": files.mask_image,
+            "pose": files.pose_reference
+        }
+        
+        for key, file_path in file_mapping.items():
+            if not file_path or not Path(file_path).exists():
+                raise FileNotFoundError(f"File not found: {file_path}")
+            
+            print(f"Uploading {key}: {file_path}")
+            
+            try:
+                # Upload file using fal_client
+                with open(file_path, 'rb') as file:
+                    upload_result = fal_client.upload_file(file)
+                
+                uploaded[key] = upload_result
+                print(f"✅ Uploaded {key}: {upload_result}")
+                
+            except Exception as error:
+                print(f"❌ Failed to upload {key}: {error}")
+                raise error
+        
+        return uploaded
+    
+    async def generate_with_custom_settings(self, **params) -> GenerationResult:
+        """Advanced generation with custom parameters"""
+        
+        # Extract parameters with defaults
+        prompt = params.get("prompt", "")
+        negative_prompt = params.get("negative_prompt", "cartoon, cgi, deformed hands, blurry, low-res")
+        background_url = params["background_url"]
+        mask_url = params["mask_url"] 
+        pose_url = params["pose_url"]
+        depth_url = params.get("depth_url")
+        lora_path = params.get("lora_path")
+        lora_scale = params.get("lora_scale", 0.75)
+        controlnet_scale = params.get("controlnet_scale", 0.85)
+        steps = params.get("steps", 35)
+        guidance = params.get("guidance", 7.5)
+        strength = params.get("strength", 0.95)
+        seed = params.get("seed")
+        
+        generation_params = {
+            "prompt": f"{self.base_prompt}, {prompt}",
+            "negative_prompt": negative_prompt,
+            "image_url": background_url,
+            "mask_url": mask_url,
+            "openpose_image_url": pose_url,
+            "openpose_preprocess": True,
+            "controlnet_conditioning_scale": controlnet_scale,
+            "num_inference_steps": steps,
+            "guidance_scale": guidance,
+            "strength": strength,
+            "num_images": 1,
+            "image_size": "square_hd",
+            "enable_safety_checker": True
+        }
+        
+        # Add optional parameters
+        if depth_url:
+            generation_params.update({
+                "depth_image_url": depth_url,
+                "depth_preprocess": True
+            })
+        
+        if lora_path:
+            generation_params["loras"] = [{
+                "path": lora_path,
+                "scale": lora_scale
+            }]
+        
+        if seed:
+            generation_params["seed"] = seed
+        
+        print("🎨 Generating with custom settings...")
+        result = fal_client.subscribe(
+            self.endpoint,
+            arguments=generation_params,
+            with_logs=True
+        )
+        
+        return GenerationResult(
+            variant=1,
+            seed=seed or 0,
+            image_url=result["images"][0]["url"],
+            generation_time=result.get("timings", {}).get("inference", "unknown"),
+            request_id=result.get("request_id", "unknown")
+        )
+    
+    async def process_batch(self, scenes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Batch processing for multiple scenes"""
+        results = []
+        
+        for index, scene in enumerate(scenes):
+            print(f"\n🔄 Processing scene {index + 1}/{len(scenes)}: {scene['name']}")
+            
+            try:
+                scene_files = SceneFiles(**scene["files"])
+                variants = await self.generate_pool_edge_variants(scene_files)
+                
+                results.append({
+                    "scene_name": scene["name"],
+                    "scene_type": scene.get("type", "unknown"),
+                    "variants": [vars(v) for v in variants],
+                    "status": "completed"
+                })
+                
+            except Exception as error:
+                print(f"❌ Scene {scene['name']} failed: {error}")
+                results.append({
+                    "scene_name": scene["name"],
+                    "status": "failed",
+                    "error": str(error)
+                })
+        
+        return results
+    
+    def generate_report(self, results: List[GenerationResult]) -> Dict[str, Any]:
+        """Generate final report for client delivery"""
+        
+        successful_results = [r for r in results if r.image_url]
+        
+        # Calculate average generation time
+        times = []
+        for result in results:
+            if result.generation_time and result.generation_time != "unknown":
+                try:
+                    # Extract numeric value from time string
+                    time_val = float(result.generation_time.replace('s', ''))
+                    times.append(time_val)
+                except (ValueError, AttributeError):
+                    continue
+        
+        avg_time = f"{sum(times) / len(times):.2f}s" if times else "unknown"
+        
+        report = {
+            "project": "Lifestyle Photography - Pool Edge Scene",
+            "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_variants": len(results),
+            "successful_generations": len(successful_results),
+            "average_generation_time": avg_time,
+            "variants": [
+                {
+                    "variant_number": result.variant,
+                    "seed": result.seed,
+                    "image_url": result.image_url,
+                    "generation_time": result.generation_time,
+                    "recommended_for": self._get_recommendation(result.variant)
+                }
+                for result in results
+            ]
+        }
+        
+        # Save report
+        with open("generation_report.json", "w") as f:
+            json.dump(report, f, indent=2)
+        
+        print("\n📊 Generation report saved to generation_report.json")
+        return report
+    
+    def _get_recommendation(self, variant_number: int) -> str:
+        """Get recommendation for variant usage"""
+        recommendations = [
+            "Conservative pose, ideal for family-friendly content",
+            "Dynamic composition, great for social media", 
+            "Artistic angle, perfect for portfolio showcase"
+        ]
+        return recommendations[variant_number - 1] if variant_number <= len(recommendations) else "Custom variant"
+    
+    async def download_results(self, results: List[GenerationResult], output_dir: str = "./outputs") -> None:
+        """Download generated images to local directory"""
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
+        
+        for result in results:
+            if not result.image_url:
+                continue
+                
+            try:
+                response = requests.get(result.image_url, timeout=30)
+                response.raise_for_status()
+                
+                filename = f"variant_{result.variant}_seed_{result.seed}.jpg"
+                file_path = output_path / filename
+                
+                with open(file_path, 'wb') as f:
+                    f.write(response.content)
+                
+                print(f"📥 Downloaded variant {result.variant}: {file_path}")
+                
+            except Exception as error:
+                print(f"❌ Failed to download variant {result.variant}: {error}")
+
+async def run_trial_project():
+    """Run the complete trial project for Carlos San Juan"""
+    print("🚀 Starting Carlos San Juan Trial Project - Pool Edge Scene\n")
+    
+    pipeline = LifestylePhotographyPipeline()
+    
+    try:
+        # Define input files (update paths to your actual files)
+        input_files = SceneFiles(
+            background_image="./assets/pool_edge_scene.jpg",
+            mask_image="./assets/figure_mask.png",
+            pose_reference="./assets/pose_reference.jpg"
+            # custom_lora="./models/foreground_lora.safetensors"  # Optional
+        )
+        
+        # Generate 3 variants as specified in project brief
+        variants = await pipeline.generate_pool_edge_variants(input_files)
+        
+        # Download results locally
+        await pipeline.download_results(variants)
+        
+        # Generate client report
+        report = pipeline.generate_report(variants)
+        
+        print("\n🎉 Trial project completed successfully!")
+        print(f"Generated {len(variants)} variants")
+        print(f"Average generation time: {report['average_generation_time']}")
+        
+        print("\nVariant URLs:")
+        for i, variant in enumerate(variants):
+            print(f"  {i + 1}. {variant.image_url}")
+        
+        # Estimate costs
+        estimated_cost = len(variants) * 0.0035  # $0.0035 per generation
+        print(f"\n💰 Estimated cost: ${estimated_cost:.4f}")
+        
+        return variants, report
+        
+    except Exception as error:
+        print(f"❌ Trial project failed: {error}")
+        raise error
+
+# Color matching and post-processing utilities
+class ColorMatchingUtils:
+    """Utilities for color matching and LUT application (post-processing)"""
+    
+    @staticmethod
+    def apply_color_match(generated_url: str, target_style: str = "cinematic") -> str:
+        """Apply color matching to generated image"""
+        # This would integrate with your color matching pipeline
+        # For now, return original URL with note about post-processing
+        print(f"🎨 Color matching would be applied here for {target_style} style")
+        return generated_url
+    
+    @staticmethod
+    def calculate_ssim(img1_url: str, img2_url: str) -> float:
+        """Calculate SSIM between two images"""
+        # Would implement actual SSIM calculation
+        print("📊 SSIM calculation would be performed here")
+        return 0.85  # Placeholder
+    
+    @staticmethod
+    def calculate_delta_e(img1_url: str, img2_url: str, mask_url: str) -> float:
+        """Calculate ΔE00 color difference"""
+        # Would implement actual ΔE00 calculation
+        print("🎯 ΔE00 calculation would be performed here")
+        return 3.2  # Placeholder
+
+if __name__ == "__main__":
+    # Run the trial project
+    asyncio.run(run_trial_project())
+
+"""
+SETUP INSTRUCTIONS:
+
+1. Install dependencies:
+   pip install fal-client pillow requests
+
+2. Set API key:
+   export FAL_KEY="your-fal-api-key-here"
+
+3. Prepare input files:
+   - assets/pool_edge_scene.jpg (background scene)
+   - assets/figure_mask.png (white=inpaint, black=preserve)
+   - assets/pose_reference.jpg (person in desired pose)
+
+4. Run trial:
+   python falai_pipeline.py
+
+EXPECTED OUTPUT:
+- 3 high-quality variants downloaded to ./outputs/
+- generation_report.json with detailed metrics
+- Total cost: ~$0.01 for trial
+
+NEXT STEPS FOR PRODUCTION:
+- Integrate LoRA training workflow
+- Add comprehensive QA metrics
+- Implement color matching pipeline
+- Scale to multiple scene types
+- Add client delivery automation
+
+BUDGET BREAKDOWN:
+- API calls: $0.01 (3 × $0.0035)
+- Development: ~$100 (2-3 hours)
+- Total trial cost: ~$100
+"""
