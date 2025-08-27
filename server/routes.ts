@@ -6,6 +6,7 @@ import { insertProjectSchema, insertVariantSchema } from "@shared/schema";
 import { poseAlignmentSystem } from "./pose-alignment";
 import { falAIService } from "./fal-integration";
 import { styleProcessor } from "./style-processor";
+import { fal } from "@fal-ai/serverless-client";
 import { correctionManager } from "./correction-manager";
 import multer from "multer";
 import path from "path";
@@ -274,6 +275,63 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(report);
     } catch (error) {
       res.status(500).json({ error: "Failed to generate report" });
+    }
+  });
+
+  // Nano Banana alternative generation endpoint (text-to-image only)
+  app.post("/api/projects/:id/generate-nano-banana", async (req, res) => {
+    try {
+      const project = await storage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ error: "Project not found" });
+      }
+
+      const { prompt } = req.body;
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required for Nano Banana generation" });
+      }
+
+      // Update project status
+      await storage.updateProject(project.id, { status: "processing" });
+      
+      // Generate with Nano Banana (text-to-image only)
+      console.log("🍌 Generating with Nano Banana (text-to-image)");
+      
+      const result = await fal.subscribe("fal-ai/nano-banana", {
+        input: {
+          prompt: prompt,
+          num_images: 1
+        },
+        logs: true
+      });
+
+      // Create variant with nano banana result
+      const variant = await storage.createVariant({
+        projectId: project.id,
+        imageUrl: result.data.images[0].url,
+        generationTime: Date.now(),
+        seed: 0, // Nano Banana doesn't return seed
+        falRequestId: result.requestId,
+        parameters: { prompt, model: "nano-banana" }
+      });
+
+      // Update project status
+      await storage.updateProject(project.id, { status: "completed" });
+
+      res.json({
+        variant,
+        nanoBananaFeatures: {
+          model: "nano-banana",
+          description: result.data.description,
+          generationType: "text-to-image",
+          note: "Nano Banana is a pure text-to-image model and doesn't support controlnet or inpainting"
+        }
+      });
+
+    } catch (error) {
+      console.error("Nano Banana generation failed:", error);
+      await storage.updateProject(req.params.id, { status: "failed" });
+      res.status(500).json({ error: "Nano Banana generation failed" });
     }
   });
 
