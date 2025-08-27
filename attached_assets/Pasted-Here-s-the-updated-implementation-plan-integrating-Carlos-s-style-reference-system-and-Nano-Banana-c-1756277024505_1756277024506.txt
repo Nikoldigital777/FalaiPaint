@@ -1,0 +1,161 @@
+Here's the updated implementation plan integrating Carlos's style reference system and Nano-Banana comparison:
+
+## Revised Technical Architecture
+
+**Enhanced Input Structure:**
+```typescript
+interface SceneInput {
+  background_image: string;
+  pose_reference: string;
+  mask: string;
+  style_reference: string;  // NEW: per-typology style guide
+  typology: 'pool' | 'terrace' | 'spa' | 'interior';
+  lut_file?: string;
+}
+```
+
+**Multi-Method Comparison Pipeline:**
+```
+GPT-4o Vision Analysis → Style Embedding Extraction → Primary Generation → Three-Way Correction Comparison
+```
+
+## Implementation Changes
+
+### 1. Style Reference Processing
+Add to your pipeline:
+
+```python
+# python/style_processor.py
+class StyleReferenceProcessor:
+    def extract_style_embeddings(self, style_ref_path: str, typology: str):
+        # CLIP embeddings for mood/color/lighting
+        clip_embeddings = self.clip_model.encode_image(style_ref_path)
+        
+        # Color palette extraction for consistency
+        color_palette = self.extract_dominant_colors(style_ref_path)
+        
+        # Lighting analysis for matching
+        lighting_profile = self.analyze_lighting_conditions(style_ref_path)
+        
+        return {
+            "clip_embeddings": clip_embeddings,
+            "color_palette": color_palette,
+            "lighting_profile": lighting_profile,
+            "typology": typology
+        }
+```
+
+### 2. Enhanced Generation Calls
+Update your fal.ai calls to include style conditioning:
+
+```typescript
+// src/services/enhanced_generation.ts
+async function generateWithStyleRef(params: {
+  background: string;
+  mask: string;
+  pose_map: string;
+  style_embeddings: StyleEmbeddings;
+  base_prompt: string;
+}) {
+  // Enhance prompt with style cues
+  const style_enhanced_prompt = this.buildStylePrompt(
+    params.base_prompt, 
+    params.style_embeddings
+  );
+  
+  // SDXL with IPAdapter-style conditioning
+  const sdxl_result = await fal.subscribe("fal-ai/sdxl-controlnet-union/inpainting", {
+    prompt: style_enhanced_prompt,
+    style_reference: params.style_embeddings,
+    // ... other params
+  });
+  
+  return sdxl_result;
+}
+```
+
+### 3. Three-Way Correction Comparison
+```python
+# python/correction_pipeline.py
+class CorrectionComparison:
+    async def run_correction_methods(self, generated_image: str, mask: str, issues: List[str]):
+        results = {}
+        
+        # Method A: Qwen-Image-Edit
+        qwen_result = await self.qwen_correction(generated_image, mask, issues)
+        results['qwen'] = await self.assess_quality(qwen_result)
+        
+        # Method B: Nano-Banana-Edit  
+        nano_result = await self.nano_banana_correction(generated_image, mask, issues)
+        results['nano_banana'] = await self.assess_quality(nano_result)
+        
+        # Method C: No correction (control)
+        results['original'] = await self.assess_quality(generated_image)
+        
+        # Select best result based on metrics
+        best_method = self.select_best_correction(results)
+        return results, best_method
+```
+
+### 4. Updated Repository Structure
+```
+trial_fal_pipeline/
+  data/
+    background.jpg
+    pose_ref.jpg
+    style_refs/
+      pool_luxury.jpg      # Style guide for pool scenes
+      terrace_modern.jpg   # Style guide for terrace scenes
+      spa_zen.jpg          # Style guide for spa scenes
+  src/services/
+    style_processor.ts     # NEW: Style reference handling
+    nano_banana.ts         # NEW: Nano-Banana API wrapper
+    correction_manager.ts  # NEW: Multi-method comparison
+  python/
+    style_embeddings.py    # NEW: CLIP + color analysis
+    correction_pipeline.py # UPDATED: Three-way comparison
+```
+
+## Updated Pipeline Flow
+
+```
+1. Assets Input (background + pose + mask + style_ref + typology)
+   ↓
+2. GPT-4o Vision Analysis + Style Embedding Extraction
+   ↓  
+3. Style-Conditioned Generation (SDXL/FLUX with enhanced prompts)
+   ↓
+4. Issue Detection (duplicates, artifacts, pose drift)
+   ↓
+5. Three-Way Correction Test:
+   - Qwen-Image-Edit
+   - Nano-Banana-Edit  
+   - Original (no correction)
+   ↓
+6. Quality Assessment + Method Selection
+   ↓
+7. Final Output with Methodology Report
+```
+
+## Technical Benefits
+
+**Style Reference Integration:**
+- Reduces LoRA training requirements per typology
+- Provides dynamic mood/aesthetic control
+- Maintains consistency across scene variations
+- Scales efficiently to new typologies
+
+**Nano-Banana vs Qwen Comparison:**
+- Identifies which correction method works best for specific issues
+- Provides fallback options if one method fails
+- Builds data on method effectiveness per typology
+
+## Deliverable Updates for Carlos
+
+Instead of 3 variants, you'll now deliver:
+- **3 style-guided variants** (each with consistent typology mood)
+- **Correction method analysis** (Qwen vs Nano-Banana effectiveness)
+- **Style consistency metrics** (color palette adherence, mood matching)
+- **Methodology recommendations** per typology
+
+This approach addresses Carlos's scalability concerns while providing the comparative data he needs to make informed technical decisions for production deployment.
