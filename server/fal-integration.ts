@@ -361,16 +361,7 @@ export class FalAIService {
 
         console.log(`🎨 Generating variant ${i + 1}/${variantCount} with seed ${variantRequest.seed}`);
         
-        const result = await this.generateImage({
-          backgroundImageUrl: variantRequest.backgroundImageUrl,
-          maskImageUrl: variantRequest.maskImageUrl,
-          poseImageUrl: variantRequest.poseImageUrl,
-          prompt: variantRequest.prompt,
-          guidanceScale: variantRequest.guidanceScale,
-          seed: variantRequest.seed,
-          controlnetStrength: variantRequest.controlnetStrength,
-          styleReferenceUrl: variantRequest.styleReferenceUrl
-        });
+        const result = await this.generateImage(variantRequest);
 
         results.push({
           ...result,
