@@ -15,6 +15,9 @@ interface Variant {
   ssimScore?: number;
   poseAccuracy?: number;
   colorDelta?: number;
+  correctionMethod?: string;
+  correctionScore?: number;
+  styleConsistencyScore?: number;
 }
 
 interface VariantGridProps {
@@ -133,6 +136,15 @@ function VariantCard({ variant, onDownload }: { variant: Variant; onDownload?: (
                           <p>SSIM: {variant.ssimScore?.toFixed(3)}</p>
                           <p>Pose: {variant.poseAccuracy ? Math.round(variant.poseAccuracy * 100) : 0}%</p>
                           <p>ΔE00: {variant.colorDelta?.toFixed(1)}</p>
+                          {variant.correctionMethod && (
+                            <>
+                              <p className="mt-2 font-medium text-blue-700">AI Enhancement:</p>
+                              <p className="text-sm">{variant.correctionMethod === 'qwen' ? '🤖 Qwen Image Edit' : 
+                                                      variant.correctionMethod === 'nano_banana' ? '🍌 Nano Banana Edit' : 
+                                                      '🎨 SDXL Original'}</p>
+                              {variant.correctionScore && <p className="text-sm">Score: {(variant.correctionScore * 100).toFixed(1)}%</p>}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -196,9 +208,18 @@ function VariantCard({ variant, onDownload }: { variant: Variant; onDownload?: (
       
       {/* Variant Info */}
       <div className="mt-3">
-        <h3 className="font-medium text-primary" data-testid={`heading-variant-${variant.variantNumber}`}>
-          Variant {variant.variantNumber} - {style}
-        </h3>
+        <div className="flex items-center justify-between mb-1">
+          <h3 className="font-medium text-primary" data-testid={`heading-variant-${variant.variantNumber}`}>
+            Variant {variant.variantNumber} - {style}
+          </h3>
+          {variant.correctionMethod && variant.status === "completed" && (
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200 ml-2">
+              {variant.correctionMethod === 'qwen' ? '🤖 Qwen Enhanced' : 
+               variant.correctionMethod === 'nano_banana' ? '🍌 Nano Banana Enhanced' : 
+               '🎨 SDXL Original'}
+            </Badge>
+          )}
+        </div>
         <p className="text-sm text-gray-500 mb-2" data-testid={`text-seed-${variant.variantNumber}`}>
           Seed: {variant.seed} • {variant.generationTime ? `${variant.generationTime.toFixed(1)}s generation` : 'Estimated 15s'}
         </p>

@@ -209,9 +209,9 @@ export default function Dashboard() {
               </div>
               <div>
                 <h1 className="text-xl font-semibold text-primary" data-testid="heading-main-title">
-                  SDXL Photography Pipeline
+                  SDXL + AI Enhancement Pipeline
                 </h1>
-                <p className="text-sm text-gray-500">Professional Lifestyle Generation</p>
+                <p className="text-sm text-gray-500">SDXL ControlNet → Qwen/Nano Banana Correction → Best Result</p>
               </div>
             </div>
             
