@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a full-stack web application for AI-powered lifestyle photography generation. It enables photographers to generate photorealistic human figures in existing background scenes using advanced AI models including SDXL Inpainting, ControlNet, and LoRA. The system is designed for Carlos San Juan's lifestyle photography workflow, allowing seamless integration of AI-generated subjects into real background photographs while maintaining photographic quality and consistency.
+This project is a full-stack web application for AI-powered lifestyle photography generation. It enables photographers to generate photorealistic human figures in existing background scenes using advanced AI models including ControlNet Union and inpainting techniques. The system is designed for Carlos San Juan's lifestyle photography workflow, allowing seamless integration of AI-generated subjects into real background photographs while maintaining photographic quality and consistency.
 
 The application provides a complete pipeline from asset upload through generation to quality assessment, with real-time progress tracking and comprehensive metrics reporting.
 
@@ -12,8 +12,8 @@ The application provides a complete pipeline from asset upload through generatio
 - **Typology-Based Processing**: Support for pool, terrace, spa, and interior scene categories
 - **Style Reference Integration**: Upload and process style guide images for consistent aesthetic control
 - **Multi-Method Correction Pipeline**: Comparison between Qwen-Image-Edit, Nano-Banana-Edit, and original generation
-- **Enhanced Quality Metrics**: Style consistency scoring, color palette adherence, and mood matching analysis
-- **LUT File Support**: Optional color grading LUT integration for advanced color matching
+- **Enhanced Quality Metrics**: SSIM, Delta E color analysis, and pose accuracy scoring
+- **Streamlined AI Pipeline**: Lightweight computer vision with Python-TypeScript integration
 
 **Technical Improvements:**
 - **GPT-4o Vision Integration**: Advanced scene analysis with computer vision fallback
@@ -54,12 +54,12 @@ Preferred communication style: Simple, everyday language.
 - **API Security**: Request validation and error handling middleware
 
 ### AI/ML Integration
-- **fal.ai API**: SDXL ControlNet Union endpoint for AI image generation
-- **Style Reference Processing**: CLIP embeddings, color palette extraction, and lighting analysis
+- **fal.ai API**: ControlNet Union inpainting endpoint for AI image generation
+- **Computer Vision Processing**: Scene analysis, mask synthesis, and quality assessment
 - **ControlNet**: Pose and depth control for realistic subject placement
-- **LoRA Support**: Custom model fine-tuning capabilities for style consistency
 - **Multi-Method Correction**: Qwen-Image-Edit and Nano-Banana-Edit integration with effectiveness comparison
-- **Enhanced Quality Assessment**: SSIM, pose accuracy, color delta (ΔE00), style consistency, and correction scoring
+- **Enhanced Quality Assessment**: SSIM, pose accuracy, color delta (ΔE00), and correction scoring
+- **Python Pipeline**: Streamlined analysis with OpenCV and scikit-image
 
 ### Key Design Patterns
 - **Repository Pattern**: Storage abstraction layer allowing multiple backend implementations

@@ -1,74 +1,28 @@
 #!/usr/bin/env python3
-"""
-Advanced Quality Assessment Metrics
-Implements SSIM, Delta E, and style consistency scoring
-"""
-
-import cv2
-import json
-import numpy as np
-import argparse
+import cv2, numpy as np, json
 from skimage.metrics import structural_similarity as ssim
 from skimage.color import rgb2lab, deltaE_ciede2000
-from typing import Dict, Tuple, Optional
 
-def read_image(path: str) -> np.ndarray:
-    """Read image and convert to RGB"""
-    return cv2.cvtColor(cv2.imread(path), cv2.COLOR_BGR2RGB)
+def read(p): return cv2.cvtColor(cv2.imread(p), cv2.COLOR_BGR2RGB)
 
-def mask_ring(mask: np.ndarray, width: int = 8) -> np.ndarray:
-    """Create ring around mask edge for boundary analysis"""
-    m = (mask > 127).astype(np.uint8)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (width, width))
-    dilated = cv2.dilate(m, kernel, iterations=1)
-    eroded = cv2.erode(m, kernel, iterations=1)
-    return (dilated - eroded) > 0
+def ring(mask, width=8):
+    m = (mask>127).astype(np.uint8)
+    dil = cv2.dilate(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(width,width)),1)
+    ero = cv2.erode(m, cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(width,width)),1)
+    return (dil-ero)>0
 
-def calculate_ssim_background(reference: np.ndarray, generated: np.ndarray, mask: np.ndarray) -> float:
-    """Calculate SSIM for background preservation (outside mask)"""
-    # Convert to grayscale
-    ref_gray = cv2.cvtColor(reference, cv2.COLOR_RGB2GRAY)
-    gen_gray = cv2.cvtColor(generated, cv2.COLOR_RGB2GRAY)
-    
-    # Create inverse mask (background only)
-    background_mask = (mask <= 127)
-    
-    # Calculate SSIM only for background regions
-    return float(ssim(ref_gray[background_mask], gen_gray[background_mask], data_range=255))
+def assess(scene_path, gen_path, mask_path):
+    ref = read(scene_path); gen = read(gen_path)
+    mask = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+    inv = (mask<=127); edge = ring(mask, 8)
+    ssim_bg = float(ssim(cv2.cvtColor(ref,cv2.COLOR_RGB2GRAY)[inv],
+                         cv2.cvtColor(gen,cv2.COLOR_RGB2GRAY)[inv], data_range=255))
+    ref_lab, gen_lab = rgb2lab(ref), rgb2lab(gen)
+    dE_bg = float(np.nanmean(deltaE_ciede2000(ref_lab[inv], gen_lab[inv])))
+    dE_edge = float(np.nanmean(deltaE_ciede2000(ref_lab[edge], gen_lab[edge])))
+    return {"ssim_bg": ssim_bg, "deltaE_bg": dE_bg, "deltaE_edge": dE_edge}
 
-def calculate_delta_e(reference: np.ndarray, generated: np.ndarray, region_mask: np.ndarray) -> float:
-    """Calculate Delta E color difference in specified region"""
-    # Convert to LAB color space
-    ref_lab = rgb2lab(reference)
-    gen_lab = rgb2lab(generated)
-    
-    # Calculate Delta E for the specified region
-    delta_e_values = deltaE_ciede2000(ref_lab[region_mask], gen_lab[region_mask])
-    
-    # Return mean Delta E, handling any NaN values
-    return float(np.nanmean(delta_e_values))
 
-def calculate_style_consistency(generated: np.ndarray, style_reference: np.ndarray, mask: np.ndarray) -> float:
-    """Calculate style consistency score between generated image and style reference"""
-    # Extract subject region from generated image
-    subject_mask = mask > 127
-    
-    if not np.any(subject_mask):
-        return 0.0
-    
-    # Calculate color histogram similarity
-    gen_subject = generated[subject_mask]
-    style_hist = cv2.calcHist([style_reference], [0, 1, 2], None, [32, 32, 32], [0, 256, 0, 256, 0, 256])
-    gen_hist = cv2.calcHist([gen_subject.reshape(-1, 3)], [0, 1, 2], None, [32, 32, 32], [0, 256, 0, 256, 0, 256])
-    
-    # Normalize histograms
-    style_hist = cv2.normalize(style_hist, style_hist).flatten()
-    gen_hist = cv2.normalize(gen_hist, gen_hist).flatten()
-    
-    # Calculate correlation
-    correlation = cv2.compareHist(style_hist, gen_hist, cv2.HISTCMP_CORREL)
-    
-    return max(0.0, float(correlation))
 
 def calculate_pose_accuracy(pose_reference: np.ndarray, generated: np.ndarray, pose_keypoints: Dict) -> float:
     """Calculate pose accuracy based on keypoints"""

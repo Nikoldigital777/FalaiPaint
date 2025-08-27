@@ -1,3 +1,39 @@
+import fs from "fs";
+import { spawn } from "child_process";
+
+async function qwenEdit(src: string, mask: string, instruction: string, outPath: string) {
+  // TODO: call your Qwen image edit endpoint
+  // For now write-through to simulate no-op
+  await fs.promises.copyFile(src, outPath);
+  return outPath;
+}
+
+async function nanoBananaEdit(src: string, mask: string, instruction: string, outPath: string) {
+  // TODO: call your Nano-Banana endpoint
+  await fs.promises.copyFile(src, outPath);
+  return outPath;
+}
+
+export async function runCorrections(scene: string, genPath: string, maskPath: string, issues: string[]) {
+  const qwenOut = genPath.replace(".png", "_qwen.png");
+  const nanoOut = genPath.replace(".png", "_nano.png");
+
+  await qwenEdit(genPath, maskPath, issues.join(", "), qwenOut);
+  await nanoBananaEdit(genPath, maskPath, issues.join(", "), nanoOut);
+
+  const outJson = genPath.replace(".png", "_corrections.json");
+  await new Promise<void>((resolve, reject) => {
+    const process = spawn("python", ["python/correction_pipeline.py",
+      "--scene", scene, "--mask", maskPath,
+      "--original", genPath, "--qwen", qwenOut, "--nano", nanoOut,
+      "--out_json", outJson
+    ]);
+    process.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Correction failed with code ${code}`)));
+  });
+
+  return JSON.parse(fs.readFileSync(outJson, "utf8"));
+}
+
 export interface CorrectionResult {
   imageUrl: string;
   method: 'qwen' | 'nano_banana' | 'original';
