@@ -8,12 +8,9 @@ async function qwenEdit(src: string, mask: string, instruction: string, outPath:
   return outPath;
 }
 
-// Nano Banana is a text-to-image model, not an editing model
-// It should be used as an alternative generation method, not for corrections
-async function nanoBananaGenerate(prompt: string, outPath: string) {
-  // This would call fal-ai/nano-banana with just the prompt
-  // For now, simulate by copying (this should be replaced with actual API call)
-  console.log(`🍌 Nano Banana would generate with prompt: ${prompt}`);
+async function nanoBananaEdit(src: string, mask: string, instruction: string, outPath: string) {
+  // TODO: call your Nano-Banana endpoint
+  await fs.promises.copyFile(src, outPath);
   return outPath;
 }
 
@@ -22,9 +19,7 @@ export async function runCorrections(scene: string, genPath: string, maskPath: s
   const nanoOut = genPath.replace(".png", "_nano.png");
 
   await qwenEdit(genPath, maskPath, issues.join(", "), qwenOut);
-  // Note: Nano Banana should not be used for corrections as it's a text-to-image model
-  console.log("⚠️ Nano Banana is a text-to-image model, not suitable for image corrections");
-  await fs.promises.copyFile(genPath, nanoOut); // Placeholder
+  await nanoBananaEdit(genPath, maskPath, issues.join(", "), nanoOut);
 
   const outJson = genPath.replace(".png", "_corrections.json");
   await new Promise<void>((resolve, reject) => {
