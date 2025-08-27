@@ -16,9 +16,11 @@ The application provides a complete pipeline from asset upload through generatio
 - **LUT File Support**: Optional color grading LUT integration for advanced color matching
 
 **Technical Improvements:**
+- **GPT-4o Vision Integration**: Advanced scene analysis with computer vision fallback
 - **Style Embedding Extraction**: CLIP-based style analysis with color palette and lighting profiling
-- **Correction Effectiveness Tracking**: Automated comparison of correction methods with performance metrics
-- **Enhanced Prompt Generation**: Dynamic prompt enhancement based on style references and typology
+- **Multi-Method Correction Pipeline**: Qwen-Image-Edit vs Nano-Banana vs Original comparison
+- **Enhanced Quality Assessment**: SSIM, Delta E, style consistency, and pose accuracy metrics
+- **Python-TypeScript Bridge**: Seamless integration between AI analysis and web application
 - **Three-Way Quality Assessment**: Comprehensive evaluation system for optimal result selection
 
 ## User Preferences

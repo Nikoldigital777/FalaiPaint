@@ -1,0 +1,65 @@
+{
+  "typology_settings": {
+    "pool": {
+      "pose_controlnet": 0.85,
+      "depth_controlnet": 0.70,
+      "denoise_strength": 0.42,
+      "base_prompt": "elegant woman in flowing sundress seated at infinity pool edge, legs gracefully positioned, luxury resort atmosphere",
+      "lighting_keywords": ["golden hour", "water reflections", "warm ambient"],
+      "style_keywords": ["luxury", "resort", "relaxation", "sophisticated"]
+    },
+    "terrace": {
+      "pose_controlnet": 0.85,
+      "depth_controlnet": 0.65,
+      "denoise_strength": 0.44,
+      "base_prompt": "sophisticated woman on modern rooftop terrace with city skyline backdrop, contemporary urban aesthetic",
+      "lighting_keywords": ["urban ambient", "architectural shadows", "balanced exposure"],
+      "style_keywords": ["modern", "urban", "sophisticated", "cosmopolitan"]
+    },
+    "spa": {
+      "pose_controlnet": 0.80,
+      "depth_controlnet": 0.70,
+      "denoise_strength": 0.40,
+      "base_prompt": "serene woman in tranquil spa setting, natural zen atmosphere, wellness aesthetic",
+      "lighting_keywords": ["soft diffused", "organic warmth", "zen atmosphere"],
+      "style_keywords": ["zen", "tranquil", "wellness", "natural", "peaceful"]
+    },
+    "interior": {
+      "pose_controlnet": 0.85,
+      "depth_controlnet": 0.60,
+      "denoise_strength": 0.45,
+      "base_prompt": "elegant woman in luxurious interior space with designer furniture, refined domestic setting",
+      "lighting_keywords": ["controlled ambient", "designer lighting", "refined shadows"],
+      "style_keywords": ["elegant", "refined", "architectural", "intimate", "curated"]
+    }
+  },
+  "correction_methods": {
+    "qwen": {
+      "enabled": true,
+      "api_endpoint": "fal-ai/qwen-image-edit",
+      "strength": 0.9,
+      "focus": "background_preservation",
+      "timeout": 120
+    },
+    "nano_banana": {
+      "enabled": true,
+      "api_endpoint": "fal-ai/nano-banana/edit",
+      "strength": 0.85,
+      "focus": "text_guided_editing",
+      "timeout": 90
+    }
+  },
+  "quality_thresholds": {
+    "ssim_background_min": 0.92,
+    "delta_e_edge_max": 3.0,
+    "style_consistency_min": 0.80,
+    "pose_accuracy_min": 0.85,
+    "overall_quality_min": 0.75
+  },
+  "vision_analysis": {
+    "gpt4o_enabled": true,
+    "fallback_to_cv": true,
+    "timeout": 60,
+    "max_retries": 2
+  }
+}

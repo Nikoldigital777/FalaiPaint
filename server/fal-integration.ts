@@ -271,6 +271,149 @@ export class FalAIService {
 
     return baseMetrics;
   }
+
+  // Enhanced Generation with Python Integration
+  async generateWithVisionAnalysis(request: FalGenerationRequest): Promise<FalGenerationResult> {
+    console.log("🔬 Starting vision-enhanced generation pipeline");
+    
+    try {
+      // Run GPT-4o Vision analysis
+      const analysisResult = await this.runVisionAnalysis(
+        request.backgroundImageUrl,
+        request.poseImageUrl,
+        request.typology
+      );
+      
+      // Use enhanced prompt from vision analysis
+      const enhancedRequest = {
+        ...request,
+        prompt: analysisResult.enhancedPrompt
+      };
+      
+      // Generate with enhanced parameters
+      const result = await this.generateImage(enhancedRequest);
+      
+      // Run correction comparison pipeline
+      const correctionResults = await this.runCorrectionPipeline(
+        request.backgroundImageUrl,
+        analysisResult.maskPath,
+        result.imageUrl,
+        analysisResult.enhancedPrompt,
+        request.styleReferenceUrl
+      );
+      
+      // Return best result
+      return {
+        ...result,
+        imageUrl: correctionResults.bestImageUrl,
+        correctionMethod: correctionResults.bestMethod,
+        correctionScore: correctionResults.improvementScore,
+        styleConsistencyScore: correctionResults.styleConsistency
+      };
+      
+    } catch (error) {
+      console.error("❌ Vision-enhanced generation failed:", error);
+      // Fallback to standard generation
+      return this.generateImage(request);
+    }
+  }
+  
+  private async runVisionAnalysis(backgroundUrl: string, poseUrl: string, typology: string) {
+    const { spawn } = await import("child_process");
+    const fs = await import("fs");
+    
+    return new Promise<any>((resolve, reject) => {
+      const pythonProcess = spawn('python', [
+        'python/gpt4o_vision_analyzer.py',
+        '--background', `.${backgroundUrl}`,
+        '--pose_ref', `.${poseUrl}`,
+        '--typology', typology,
+        '--out_dir', 'out'
+      ]);
+      
+      pythonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const analysisPath = 'out/scene_analysis.json';
+            const promptPath = 'out/enhanced_prompt.txt';
+            const maskPath = 'out/segmentation_mask.png';
+            
+            const analysis = JSON.parse(fs.readFileSync(analysisPath, 'utf8'));
+            const enhancedPrompt = fs.readFileSync(promptPath, 'utf8').trim();
+            
+            resolve({
+              analysis,
+              enhancedPrompt,
+              maskPath
+            });
+          } catch (error) {
+            reject(new Error(`Failed to read analysis results: ${error}`));
+          }
+        } else {
+          reject(new Error(`Vision analysis failed with code ${code}`));
+        }
+      });
+    });
+  }
+  
+  private async runCorrectionPipeline(
+    backgroundUrl: string,
+    maskPath: string,
+    originalImageUrl: string,
+    enhancedPrompt: string,
+    styleReferenceUrl?: string
+  ) {
+    const { spawn } = await import("child_process");
+    const fs = await import("fs");
+    
+    return new Promise<any>((resolve, reject) => {
+      const args = [
+        'python/correction_pipeline.py',
+        '--background', `.${backgroundUrl}`,
+        '--mask', maskPath,
+        '--original', `.${originalImageUrl}`,
+        '--prompt', enhancedPrompt,
+        '--output_dir', 'out'
+      ];
+      
+      if (styleReferenceUrl) {
+        args.push('--style_reference', `.${styleReferenceUrl}`);
+      }
+      
+      const pythonProcess = spawn('python', args);
+      
+      pythonProcess.on('close', (code) => {
+        if (code === 0) {
+          try {
+            const resultsPath = 'out/correction_comparison.json';
+            const results = JSON.parse(fs.readFileSync(resultsPath, 'utf8'));
+            
+            // Determine best image URL
+            const bestMethod = results.best_method;
+            let bestImageUrl = originalImageUrl;
+            
+            if (bestMethod === 'qwen' && fs.existsSync('out/qwen_corrected.jpg')) {
+              bestImageUrl = '/out/qwen_corrected.jpg';
+            } else if (bestMethod === 'nano_banana' && fs.existsSync('out/nano_banana_corrected.jpg')) {
+              bestImageUrl = '/out/nano_banana_corrected.jpg';
+            }
+            
+            resolve({
+              bestImageUrl,
+              bestMethod,
+              improvementScore: results.improvement,
+              styleConsistency: results.results[bestMethod]?.style_consistency || 0,
+              fullResults: results
+            });
+          } catch (error) {
+            reject(new Error(`Failed to read correction results: ${error}`));
+          }
+        } else {
+          reject(new Error(`Correction pipeline failed with code ${code}`));
+        }
+      });
+    });
+  }
 }
 
 export const falAIService = new FalAIService();
