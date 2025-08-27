@@ -62,28 +62,35 @@ export class FalAIService {
     }
   }
 
-  private buildPrompt(request: FalGenerationRequest): string {
-    const basePrompt = "photorealistic lifestyle photography, natural lighting, professional quality, 85mm lens, f/2.8";
+  private buildEnhancedPrompt(request: FalGenerationRequest, styleUrl?: string): string {
+    const basePrompt = "photorealistic professional photography, detailed skin texture, natural hair flow, authentic expressions";
     
-    const scenePrompts = {
-      pool_edge: "woman in elegant sundress seated at pool edge, relaxed natural posture, soft golden hour lighting, luxury resort atmosphere",
-      beach_sunset: "woman in flowing dress on sandy beach, golden sunset lighting, ocean background, serene coastal atmosphere",
-      urban_rooftop: "woman in chic outfit on modern rooftop terrace, city skyline background, contemporary urban setting",
-      garden_party: "woman in summer dress in lush garden setting, natural botanical background, organic natural lighting",
-      studio_portrait: "woman in professional attire in studio setting, controlled lighting, clean modern background"
+    // Typology-based scene prompts (Carlos's enhanced system)
+    const typologyPrompts = {
+      pool: "elegant woman in flowing sundress seated at infinity pool edge, legs gracefully positioned, luxury resort atmosphere, golden hour lighting, crystal clear water reflections",
+      terrace: "sophisticated woman on modern rooftop terrace, city skyline backdrop, contemporary urban aesthetic, architectural elements, ambient lighting",
+      spa: "serene woman in spa setting, natural zen atmosphere, soft ambient lighting, wellness aesthetic, organic textures, peaceful environment",
+      interior: "elegant woman in luxurious interior space, designer furniture, architectural lighting, refined domestic setting"
     };
-
-    const stylePrompts = {
-      luxury_lifestyle: "high-end fashion photography style, premium aesthetic, sophisticated composition",
-      editorial_fashion: "dramatic lighting, high fashion editorial style, artistic composition",
-      natural_candid: "candid lifestyle photography, authentic moments, natural expressions",
-      commercial_advertising: "product photography lighting, commercial quality, advertising campaign style"
+    
+    const photographyStyles = {
+      luxury_lifestyle: "high-end fashion photography, premium aesthetic, 85mm lens, f/2.8, professional lighting, luxury brand quality",
+      editorial_fashion: "editorial fashion photography, dramatic lighting, artistic composition, magazine quality, creative direction",
+      natural_candid: "natural lifestyle photography, candid moments, authentic expressions, organic lighting, genuine emotions",
+      commercial_advertising: "commercial photography lighting, advertising quality, brand-focused composition, marketing appeal"
     };
-
-    const scenePrompt = scenePrompts[request.sceneType as keyof typeof scenePrompts] || scenePrompts.pool_edge;
-    const stylePrompt = stylePrompts[request.photographyStyle as keyof typeof stylePrompts] || stylePrompts.luxury_lifestyle;
-
-    return `${basePrompt}, ${scenePrompt}, ${stylePrompt}, detailed skin texture, high-end fashion photography`;
+    
+    const typologyPrompt = typologyPrompts[request.typology as keyof typeof typologyPrompts] || typologyPrompts.pool;
+    const stylePrompt = photographyStyles[request.photographyStyle as keyof typeof photographyStyles] || photographyStyles.luxury_lifestyle;
+    
+    let enhancedPrompt = `${basePrompt}, ${typologyPrompt}, ${stylePrompt}`;
+    
+    // Add style reference guidance if provided
+    if (styleUrl) {
+      enhancedPrompt += ", matching the color palette and mood of the style reference image, consistent aesthetic direction";
+    }
+    
+    return enhancedPrompt;
   }
 
   async generateImage(request: FalGenerationRequest): Promise<FalGenerationResult> {
@@ -93,13 +100,21 @@ export class FalAIService {
     try {
       // Upload images to fal.ai storage first
       console.log("📤 Uploading images to fal.ai storage...");
-      const [backgroundUrl, maskUrl, poseUrl] = await Promise.all([
+      const uploadPromises = [
         this.uploadImage(`.${request.backgroundImageUrl}`),
         this.uploadImage(`.${request.maskImageUrl}`),
         this.uploadImage(`.${request.poseImageUrl}`)
-      ]);
+      ];
+      
+      // Add style reference if provided
+      if (request.styleReferenceUrl) {
+        uploadPromises.push(this.uploadImage(`.${request.styleReferenceUrl}`));
+      }
+      
+      const uploadResults = await Promise.all(uploadPromises);
+      const [backgroundUrl, maskUrl, poseUrl, styleUrl] = uploadResults;
 
-      const prompt = this.buildPrompt(request);
+      const prompt = this.buildEnhancedPrompt(request, styleUrl);
       const negativePrompt = "cartoon, illustration, anime, cgi, deformed hands, extra fingers, blurry, low resolution, artifacts, harsh shadows, over-saturated, bad anatomy, distorted proportions, multiple people, crowd, watermark, signature";
       
       console.log(`🎯 Generated prompt: ${prompt.substring(0, 100)}...`);

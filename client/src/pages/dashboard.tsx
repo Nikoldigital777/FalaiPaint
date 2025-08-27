@@ -581,25 +581,25 @@ export default function Dashboard() {
             )}
             
             {/* Generated Results */}
-            {progressData && progressData.variants && Array.isArray(progressData.variants) && (
+            {progressData && (progressData as any).variants && Array.isArray((progressData as any).variants) && (
               <VariantGrid 
-                variants={progressData.variants}
+                variants={(progressData as any).variants}
                 onDownload={() => toast({ title: "Image downloaded", description: "Variant saved successfully" })}
                 onDownloadAll={() => toast({ title: "All images downloaded", description: "All variants saved successfully" })}
               />
             )}
             
             {/* Quality Assessment */}
-            {projectData && 'qualityMetrics' in projectData && projectData.qualityMetrics && (
+            {projectData && (projectData as any).qualityMetrics && (
               <QualityMetrics 
-                ssimScore={(projectData.qualityMetrics as any).averageSSIM}
-                poseAccuracy={(projectData.qualityMetrics as any).averagePoseAccuracy}
-                colorDelta={(projectData.qualityMetrics as any).averageColorDelta}
-                averageGenerationTime={(projectData.qualityMetrics as any).averageGenerationTime}
-                totalApiCalls={(projectData.qualityMetrics as any).totalApiCalls}
-                successRate={(projectData.qualityMetrics as any).successRate}
+                ssimScore={(projectData as any).qualityMetrics.averageSSIM}
+                poseAccuracy={(projectData as any).qualityMetrics.averagePoseAccuracy}
+                colorDelta={(projectData as any).qualityMetrics.averageColorDelta}
+                averageGenerationTime={(projectData as any).qualityMetrics.averageGenerationTime}
+                totalApiCalls={(projectData as any).qualityMetrics.totalApiCalls}
+                successRate={(projectData as any).qualityMetrics.successRate}
                 totalCost={currentProject?.totalCost}
-                recommendations={(projectData.qualityMetrics as any).recommendations}
+                recommendations={(projectData as any).qualityMetrics.recommendations}
               />
             )}
             
