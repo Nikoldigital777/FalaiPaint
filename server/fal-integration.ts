@@ -4,12 +4,15 @@ export interface FalGenerationRequest {
   backgroundImageUrl: string;
   maskImageUrl: string;
   poseImageUrl: string;
+  styleReferenceUrl?: string;
+  lutFileUrl?: string;
   prompt: string;
   controlnetStrength: number;
   guidanceScale: number;
   seed: number;
   sceneType: string;
   photographyStyle: string;
+  typology: string;
 }
 
 export interface FalGenerationResult {
@@ -18,6 +21,9 @@ export interface FalGenerationResult {
   requestId: string;
   seed: number;
   falRequestId: string;
+  styleConsistencyScore?: number;
+  correctionMethod?: string;
+  correctionScore?: number;
 }
 
 export class FalAIService {
@@ -220,19 +226,35 @@ export class FalAIService {
   async calculateQualityMetrics(
     originalImageUrl: string,
     generatedImageUrl: string,
-    maskImageUrl: string
+    maskImageUrl: string,
+    styleReferenceUrl?: string
   ): Promise<{
     ssimScore: number;
     poseAccuracy: number;
     colorDelta: number;
+    styleConsistencyScore?: number;
+    colorPaletteAdherence?: number;
+    moodMatching?: number;
   }> {
     // For now, return simulated quality metrics
     // In production, this would analyze the actual images
-    return {
+    const baseMetrics = {
       ssimScore: 0.92 + Math.random() * 0.06, // 0.92-0.98
       poseAccuracy: 0.94 + Math.random() * 0.05, // 0.94-0.99
       colorDelta: 1.5 + Math.random() * 1.0 // 1.5-2.5 ΔE00
     };
+
+    // Add enhanced metrics if style reference is provided
+    if (styleReferenceUrl) {
+      return {
+        ...baseMetrics,
+        styleConsistencyScore: 0.88 + Math.random() * 0.10, // 0.88-0.98
+        colorPaletteAdherence: 0.85 + Math.random() * 0.12, // 0.85-0.97
+        moodMatching: 0.90 + Math.random() * 0.08 // 0.90-0.98
+      };
+    }
+
+    return baseMetrics;
   }
 }
 

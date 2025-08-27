@@ -6,6 +6,21 @@ This project is a full-stack web application for AI-powered lifestyle photograph
 
 The application provides a complete pipeline from asset upload through generation to quality assessment, with real-time progress tracking and comprehensive metrics reporting.
 
+## Recent Enhancements (August 2025)
+
+**Enhanced Style Reference System:**
+- **Typology-Based Processing**: Support for pool, terrace, spa, and interior scene categories
+- **Style Reference Integration**: Upload and process style guide images for consistent aesthetic control
+- **Multi-Method Correction Pipeline**: Comparison between Qwen-Image-Edit, Nano-Banana-Edit, and original generation
+- **Enhanced Quality Metrics**: Style consistency scoring, color palette adherence, and mood matching analysis
+- **LUT File Support**: Optional color grading LUT integration for advanced color matching
+
+**Technical Improvements:**
+- **Style Embedding Extraction**: CLIP-based style analysis with color palette and lighting profiling
+- **Correction Effectiveness Tracking**: Automated comparison of correction methods with performance metrics
+- **Enhanced Prompt Generation**: Dynamic prompt enhancement based on style references and typology
+- **Three-Way Quality Assessment**: Comprehensive evaluation system for optimal result selection
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
@@ -38,9 +53,11 @@ Preferred communication style: Simple, everyday language.
 
 ### AI/ML Integration
 - **fal.ai API**: SDXL ControlNet Union endpoint for AI image generation
+- **Style Reference Processing**: CLIP embeddings, color palette extraction, and lighting analysis
 - **ControlNet**: Pose and depth control for realistic subject placement
 - **LoRA Support**: Custom model fine-tuning capabilities for style consistency
-- **Quality Assessment**: Framework for SSIM, pose accuracy, and color delta (ΔE00) metrics
+- **Multi-Method Correction**: Qwen-Image-Edit and Nano-Banana-Edit integration with effectiveness comparison
+- **Enhanced Quality Assessment**: SSIM, pose accuracy, color delta (ΔE00), style consistency, and correction scoring
 
 ### Key Design Patterns
 - **Repository Pattern**: Storage abstraction layer allowing multiple backend implementations

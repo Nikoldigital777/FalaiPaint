@@ -2,11 +2,11 @@ import { useCallback, useState } from "react";
 import { useDropzone } from "react-dropzone";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Upload, X, Image, VenetianMask, User } from "lucide-react";
+import { Upload, X, Image, VenetianMask, User, Palette, FileImage } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface FileUploadProps {
-  type: "background" | "mask" | "pose";
+  type: "background" | "mask" | "pose" | "style" | "lut";
   value?: string;
   onChange: (url: string) => void;
   className?: string;
@@ -21,7 +21,7 @@ const uploadConfig = {
   },
   mask: {
     icon: VenetianMask,
-    title: "Inpainting VenetianMask", 
+    title: "Inpainting Mask", 
     description: "Drop mask image or click to browse",
     hint: "White = inpaint area, Black = preserve"
   },
@@ -30,6 +30,18 @@ const uploadConfig = {
     title: "Pose Reference",
     description: "Drop pose reference or click to browse", 
     hint: "Person in desired pose position"
+  },
+  style: {
+    icon: Palette,
+    title: "Style Reference",
+    description: "Drop style guide image or click to browse",
+    hint: "Reference for color, mood, and aesthetic"
+  },
+  lut: {
+    icon: FileImage,
+    title: "LUT File (Optional)",
+    description: "Drop color grading LUT or click to browse",
+    hint: "For advanced color matching"
   }
 };
 
@@ -39,7 +51,7 @@ export function FileUpload({ type, value, onChange, className }: FileUploadProps
   const [error, setError] = useState<string | null>(null);
 
   const config = uploadConfig[type];
-  const Icon = config.icon;
+  const Icon = config?.icon || Upload;
 
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     const file = acceptedFiles[0];

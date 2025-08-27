@@ -5,6 +5,8 @@ import { storage } from "./storage";
 import { insertProjectSchema, insertVariantSchema } from "@shared/schema";
 import { poseAlignmentSystem } from "./pose-alignment";
 import { falAIService } from "./fal-integration";
+import { styleProcessor } from "./style-processor";
+import { correctionManager } from "./correction-manager";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -290,17 +292,40 @@ async function generateVariants(projectId: string) {
   }
 
   try {
+    // Process style reference if provided
+    let styleEmbeddings = null;
+    let enhancedPrompt = "";
+    
+    if (project.styleReferenceUrl) {
+      console.log("🎨 Processing style reference for enhanced generation...");
+      const sceneInput = {
+        background_image: project.backgroundImageUrl || "",
+        pose_reference: project.poseImageUrl || "",
+        mask: project.maskImageUrl || "",
+        style_reference: project.styleReferenceUrl,
+        typology: (project.typology as 'pool' | 'terrace' | 'spa' | 'interior') || 'pool',
+        lut_file: project.lutFileUrl || undefined
+      };
+      
+      const styleResult = await styleProcessor.processSceneInput(sceneInput);
+      styleEmbeddings = styleResult.styleEmbeddings;
+      enhancedPrompt = styleResult.enhancedPrompt;
+    }
+
     // Prepare generation request
     const generationRequest = {
       backgroundImageUrl: project.backgroundImageUrl || "",
       maskImageUrl: project.maskImageUrl || "",
       poseImageUrl: project.poseImageUrl || "",
-      prompt: "",
+      styleReferenceUrl: project.styleReferenceUrl || undefined,
+      lutFileUrl: project.lutFileUrl || undefined,
+      prompt: enhancedPrompt || "",
       controlnetStrength: project.controlnetStrength || 0.85,
       guidanceScale: project.guidanceScale || 7.5,
       seed: 0, // Will be set per variant
       sceneType: project.sceneType,
-      photographyStyle: project.photographyStyle
+      photographyStyle: project.photographyStyle,
+      typology: project.typology || "pool"
     };
 
     for (const variant of variants) {
@@ -316,22 +341,55 @@ async function generateVariants(projectId: string) {
 
         const result = await falAIService.generateImage(variantRequest);
         
-        // Calculate quality metrics
+        // Detect issues and run correction comparison
+        console.log(`🔍 Analyzing generated image for issues...`);
+        const detectedIssues = await correctionManager.detectIssues(
+          result.imageUrl,
+          project.backgroundImageUrl || "",
+          styleEmbeddings
+        );
+        
+        let correctionResult = null;
+        let finalImageUrl = result.imageUrl;
+        let correctionMethod = "original";
+        let correctionScore = 0.0;
+        
+        // Run correction comparison if issues detected
+        if (detectedIssues.length > 0) {
+          console.log(`⚠️ Found ${detectedIssues.length} issues, running correction comparison...`);
+          correctionResult = await correctionManager.runCorrectionMethods(
+            result.imageUrl,
+            project.maskImageUrl || "",
+            detectedIssues
+          );
+          
+          // Use best correction method result
+          const bestResult = correctionResult.results[correctionResult.bestMethod];
+          finalImageUrl = bestResult.imageUrl;
+          correctionMethod = bestResult.method;
+          correctionScore = bestResult.correctionScore;
+        }
+        
+        // Calculate enhanced quality metrics
         const qualityMetrics = await falAIService.calculateQualityMetrics(
           project.backgroundImageUrl || "",
-          result.imageUrl,
-          project.maskImageUrl || ""
+          finalImageUrl,
+          project.maskImageUrl || "",
+          project.styleReferenceUrl || undefined
         );
 
-        // Update variant with results
+        // Update variant with comprehensive results
         await storage.updateVariant(variant.id, {
           status: "completed",
           generationTime: result.generationTime,
-          imageUrl: result.imageUrl,
+          imageUrl: finalImageUrl,
           falRequestId: result.falRequestId,
           ssimScore: qualityMetrics.ssimScore,
           poseAccuracy: qualityMetrics.poseAccuracy,
-          colorDelta: qualityMetrics.colorDelta
+          colorDelta: qualityMetrics.colorDelta,
+          styleConsistencyScore: qualityMetrics.styleConsistencyScore || null,
+          correctionMethod,
+          correctionScore
         });
         
       } catch (error) {
@@ -362,6 +420,18 @@ async function generateVariants(projectId: string) {
     const avgSSIM = completedVariants.reduce((sum, v) => sum + (v.ssimScore || 0), 0) / completedVariants.length;
     const avgPoseAccuracy = completedVariants.reduce((sum, v) => sum + (v.poseAccuracy || 0), 0) / completedVariants.length;
     const avgColorDelta = completedVariants.reduce((sum, v) => sum + (v.colorDelta || 0), 0) / completedVariants.length;
+    const avgStyleConsistency = completedVariants.reduce((sum, v) => sum + (v.styleConsistencyScore || 0), 0) / completedVariants.length;
+    
+    // Calculate correction method effectiveness
+    const correctionMethods = ['qwen', 'nano_banana', 'original'];
+    const methodEffectiveness: Record<string, number> = {};
+    
+    correctionMethods.forEach(method => {
+      const methodVariants = completedVariants.filter(v => v.correctionMethod === method);
+      if (methodVariants.length > 0) {
+        methodEffectiveness[method] = methodVariants.reduce((sum, v) => sum + (v.correctionScore || 0), 0) / methodVariants.length;
+      }
+    });
 
     await storage.createQualityMetrics({
       projectId,
@@ -371,10 +441,15 @@ async function generateVariants(projectId: string) {
       averageSSIM: avgSSIM,
       averagePoseAccuracy: avgPoseAccuracy,
       averageColorDelta: avgColorDelta,
+      averageStyleConsistency: avgStyleConsistency || null,
+      correctionMethodEffectiveness: methodEffectiveness,
+      colorPaletteAdherence: null,
+      moodMatching: null,
       recommendations: [
         avgSSIM > 0.95 ? "Excellent structural similarity achieved" : "Consider improving structural alignment",
         avgPoseAccuracy > 0.96 ? "Excellent pose alignment achieved" : "Consider pose reference optimization",
-        avgColorDelta < 2.0 ? "Excellent color matching" : "Consider color calibration adjustments"
+        avgColorDelta < 2.0 ? "Excellent color matching" : "Consider color calibration adjustments",
+        avgStyleConsistency > 0.9 ? "Excellent style consistency" : "Consider improving style reference processing"
       ]
     });
   }

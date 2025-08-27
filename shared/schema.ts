@@ -8,11 +8,14 @@ export const projects = pgTable("projects", {
   name: text("name").notNull(),
   sceneType: text("scene_type").notNull().default("pool_edge"),
   photographyStyle: text("photography_style").notNull().default("luxury_lifestyle"),
+  typology: text("typology").notNull().default("pool"), // pool, terrace, spa, interior
   variantCount: integer("variant_count").notNull().default(3),
   status: text("status").notNull().default("created"), // created, uploading, generating, completed, failed
   backgroundImageUrl: text("background_image_url"),
   maskImageUrl: text("mask_image_url"),
   poseImageUrl: text("pose_image_url"),
+  styleReferenceUrl: text("style_reference_url"), // NEW: Style reference image
+  lutFileUrl: text("lut_file_url"), // NEW: Optional LUT file
   enableCustomLora: boolean("enable_custom_lora").default(false),
   controlnetStrength: real("controlnet_strength").default(0.85),
   guidanceScale: real("guidance_scale").default(7.5),
@@ -31,6 +34,9 @@ export const variants = pgTable("variants", {
   ssimScore: real("ssim_score"),
   poseAccuracy: real("pose_accuracy"),
   colorDelta: real("color_delta"), // ΔE00 value
+  styleConsistencyScore: real("style_consistency_score"), // NEW: Style adherence metric
+  correctionMethod: text("correction_method"), // NEW: qwen, nano_banana, original
+  correctionScore: real("correction_score"), // NEW: Correction effectiveness
   falRequestId: text("fal_request_id"),
   errorMessage: text("error_message"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -45,6 +51,10 @@ export const qualityMetrics = pgTable("quality_metrics", {
   averageSSIM: real("average_ssim"),
   averagePoseAccuracy: real("average_pose_accuracy"),
   averageColorDelta: real("average_color_delta"),
+  averageStyleConsistency: real("average_style_consistency"), // NEW: Style consistency metrics
+  correctionMethodEffectiveness: jsonb("correction_method_effectiveness"), // NEW: Method comparison data
+  colorPaletteAdherence: real("color_palette_adherence"), // NEW: Style color matching
+  moodMatching: real("mood_matching"), // NEW: Style mood consistency
   recommendations: jsonb("recommendations"),
   createdAt: timestamp("created_at").defaultNow(),
 });

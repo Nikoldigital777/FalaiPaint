@@ -22,11 +22,14 @@ interface Project {
   name: string;
   sceneType: string;
   photographyStyle: string;
+  typology: string;
   variantCount: number;
   status: string;
   backgroundImageUrl?: string;
   maskImageUrl?: string;
   poseImageUrl?: string;
+  styleReferenceUrl?: string;
+  lutFileUrl?: string;
   enableCustomLora: boolean;
   controlnetStrength: number;
   guidanceScale: number;
@@ -46,10 +49,13 @@ export default function Dashboard() {
     name: "Lifestyle Photography - Pool Edge Scene",
     sceneType: "pool_edge",
     photographyStyle: "luxury_lifestyle",
+    typology: "pool",
     variantCount: 3,
     backgroundImageUrl: "",
     maskImageUrl: "",
     poseImageUrl: "",
+    styleReferenceUrl: "",
+    lutFileUrl: "",
     enableCustomLora: false,
     controlnetStrength: 0.85,
     guidanceScale: 7.5
@@ -306,6 +312,24 @@ export default function Dashboard() {
                   </div>
                   
                   <div>
+                    <Label htmlFor="typology">Typology</Label>
+                    <Select 
+                      value={formData.typology} 
+                      onValueChange={(value) => setFormData(prev => ({ ...prev, typology: value }))}
+                    >
+                      <SelectTrigger data-testid="select-typology">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pool">Pool</SelectItem>
+                        <SelectItem value="terrace">Terrace</SelectItem>
+                        <SelectItem value="spa">Spa</SelectItem>
+                        <SelectItem value="interior">Interior</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
                     <Label htmlFor="scene-type">Scene Type</Label>
                     <Select 
                       value={formData.sceneType} 
@@ -388,6 +412,21 @@ export default function Dashboard() {
                     type="pose"
                     value={formData.poseImageUrl}
                     onChange={(url) => setFormData(prev => ({ ...prev, poseImageUrl: url }))}
+                  />
+                  
+                  <FileUpload
+                    type="style"
+                    value={formData.styleReferenceUrl}
+                    onChange={(url) => setFormData(prev => ({ ...prev, styleReferenceUrl: url }))}
+                  />
+                </div>
+                
+                <div className="mt-4 pt-4 border-t">
+                  <h3 className="text-sm font-medium mb-2">Optional Enhancement</h3>
+                  <FileUpload
+                    type="lut"
+                    value={formData.lutFileUrl}
+                    onChange={(url) => setFormData(prev => ({ ...prev, lutFileUrl: url }))}
                   />
                 </div>
               </CardContent>
